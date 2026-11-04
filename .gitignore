@@ -1,0 +1,13 @@
+__pycache__/
+*.py[cod]
+*$py.class
+*.session
+*.session-journal
+sessions/
+data/*.db
+data/bot_data.json
+data/pending_logins.json
+server.log
+.env
+.DS_Store
+

@@ -1,0 +1,767 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Telegram Adder Pro - Web Edition</title>
+    <!-- Tailwind CSS (CDN) -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Font Awesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Custom Style -->
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+
+<body
+    class="bg-[#0b0f17] text-gray-200 min-h-screen flex flex-col font-sans selection:bg-cyan-500 selection:text-white">
+
+    <!-- Top Navigation Bar -->
+    <header class="border-b border-gray-800 bg-[#111827]/80 backdrop-blur-md sticky top-0 z-40 px-4 py-3 shadow-lg">
+        <div class="max-w-7xl mx-auto flex flex-wrap items-center justify-between gap-4">
+
+            <!-- Logo & Brand -->
+            <div class="flex items-center gap-3">
+                <div
+                    class="w-10 h-10 rounded-xl bg-gradient-to-tr from-cyan-500 to-blue-600 flex items-center justify-center shadow-lg shadow-cyan-500/20 text-white text-xl font-bold">
+                    <i class="fab fa-telegram-plane"></i>
+                </div>
+                <div>
+                    <h1 class="text-lg font-bold tracking-wide text-white flex items-center gap-2">
+                        Telegram Adder Web <span
+                            class="text-xs px-2 py-0.5 rounded-full bg-cyan-500/20 text-cyan-400 border border-cyan-500/30">PRO
+                            v2.0</span>
+                    </h1>
+                    <p class="text-xs text-gray-400" id="headerSubtitle">Multi-Account Load Balancing & Member Inviter
+                    </p>
+                </div>
+            </div>
+
+            <!-- System Stats Badge (RAM / CPU) -->
+            <div
+                class="hidden md:flex items-center gap-4 bg-gray-900/80 px-3 py-1.5 rounded-lg border border-gray-800 text-xs text-gray-400">
+                <div class="flex items-center gap-1.5">
+                    <i class="fas fa-microchip text-cyan-400"></i>
+                    <span>CPU:</span>
+                    <span id="statCpu" class="text-gray-200 font-mono">--%</span>
+                </div>
+                <div class="h-3 w-px bg-gray-700"></div>
+                <div class="flex items-center gap-1.5">
+                    <i class="fas fa-memory text-purple-400"></i>
+                    <span>RAM:</span>
+                    <span id="statRam" class="text-gray-200 font-mono">-- GB</span>
+                </div>
+                <div class="h-3 w-px bg-gray-700"></div>
+                <div class="flex items-center gap-1.5">
+                    <i class="fas fa-hdd text-emerald-400"></i>
+                    <span>Disk:</span>
+                    <span id="statDisk" class="text-gray-200 font-mono">-- GB</span>
+                </div>
+            </div>
+
+            <!-- Controls: License, Language, Admin -->
+            <div class="flex items-center gap-2">
+                <!-- License Status Pill -->
+                <button id="licenseStatusBtn" onclick="openLicenseModal()"
+                    class="flex items-center gap-2 px-3 py-1.5 rounded-lg border text-xs font-semibold transition-all duration-200 shadow-sm">
+                    <span class="w-2 h-2 rounded-full animate-pulse" id="licenseStatusDot"></span>
+                    <span id="licenseStatusText">Checking License...</span>
+                </button>
+
+                <!-- Language Switcher -->
+                <button onclick="toggleLanguage()"
+                    class="px-3 py-1.5 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-lg text-xs font-medium border border-gray-700 flex items-center gap-1.5 transition">
+                    <i class="fas fa-globe text-cyan-400"></i>
+                    <span id="currentLangLabel">EN</span>
+                </button>
+
+                <!-- Admin Contact -->
+                <a href="https://t.me/kun_amra" target="_blank"
+                    class="px-3 py-1.5 bg-blue-600/20 hover:bg-blue-600/30 text-blue-400 border border-blue-500/30 rounded-lg text-xs font-medium flex items-center gap-1.5 transition">
+                    <i class="fab fa-telegram"></i>
+                    <span class="hidden sm:inline">Admin:</span> @kun_amra
+                </a>
+            </div>
+
+        </div>
+    </header>
+
+    <!-- License Required Alert Banner (When Inactive) -->
+    <div id="licenseAlertBanner"
+        class="hidden bg-gradient-to-r from-amber-900/60 via-red-900/40 to-amber-900/60 border-b border-amber-500/40 px-4 py-3 text-center">
+        <div class="max-w-5xl mx-auto flex flex-wrap items-center justify-between gap-3 text-sm">
+            <div class="flex items-center gap-2 text-amber-200">
+                <i class="fas fa-lock text-amber-400 text-base"></i>
+                <span id="txtBannerLock">License activation is required to add accounts and use Telegram Adder
+                    tools.</span>
+            </div>
+            <button onclick="openLicenseModal()"
+                class="px-4 py-1.5 bg-amber-500 hover:bg-amber-400 text-gray-950 font-bold rounded-lg text-xs transition shadow-lg shadow-amber-500/20">
+                <i class="fas fa-key mr-1"></i> <span id="txtBannerBtn">Activate License Key</span>
+            </button>
+        </div>
+    </div>
+
+    <!-- Main Content Container -->
+    <main class="max-w-7xl mx-auto px-4 py-6 flex-1 w-full space-y-6">
+
+        <!-- Grid Layout: 2 Columns on Large Screens -->
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+
+            <!-- LEFT COLUMN: Accounts Manager (5 Columns) -->
+            <div class="lg:col-span-5 space-y-6">
+
+                <!-- Account Management Card -->
+                <div class="bg-[#111827] rounded-2xl border border-gray-800 p-5 shadow-xl relative overflow-hidden">
+                    <div class="flex items-center justify-between mb-4">
+                        <div class="flex items-center gap-2">
+                            <div
+                                class="w-8 h-8 rounded-lg bg-cyan-500/10 text-cyan-400 flex items-center justify-center">
+                                <i class="fas fa-users-cog"></i>
+                            </div>
+                            <div>
+                                <h2 class="text-base font-bold text-white" id="titleAccounts">Connected Accounts</h2>
+                                <p class="text-xs text-gray-400" id="accountsCounter">Active: 0 / 0 (Max: 50)</p>
+                            </div>
+                        </div>
+
+                        <!-- Add Account Button -->
+                        <button onclick="openAddAccountModal()"
+                            class="px-3 py-1.5 bg-cyan-600 hover:bg-cyan-500 text-white rounded-lg text-xs font-semibold flex items-center gap-1.5 shadow-md shadow-cyan-600/30 transition">
+                            <i class="fas fa-plus"></i>
+                            <span id="btnAddAccount">Add Account</span>
+                        </button>
+                    </div>
+
+                    <!-- Batch controls -->
+                    <div
+                        class="flex items-center justify-between gap-2 py-2 border-y border-gray-800 text-xs text-gray-400">
+                        <div class="flex gap-2">
+                            <button onclick="selectAllAccounts(true)" class="hover:text-cyan-400 transition"
+                                id="btnSelectAll">Select All</button>
+                            <span>•</span>
+                            <button onclick="selectAllAccounts(false)" class="hover:text-cyan-400 transition"
+                                id="btnDeselectAll">Deselect All</button>
+                        </div>
+                        <button onclick="clearAllAccounts()" class="hover:text-red-400 text-red-500/80 transition"
+                            id="btnClearAll">Clear All</button>
+                    </div>
+
+                    <!-- Accounts List Scroll Area -->
+                    <div id="accountsList" class="mt-4 space-y-2.5 max-h-[460px] overflow-y-auto pr-1">
+                        <!-- Loaded via JS -->
+                        <div class="text-center py-8 text-gray-500 text-xs" id="emptyAccountsMsg">
+                            <i class="fas fa-user-slash text-2xl mb-2 block text-gray-600"></i>
+                            No Telegram accounts connected yet.<br>Click "+ Add Account" to connect your first session.
+                        </div>
+                    </div>
+
+                    <!-- Hint note -->
+                    <p class="mt-4 text-[11px] text-gray-500 leading-relaxed" id="rotationHint">
+                        <i class="fas fa-sync-alt text-cyan-400 mr-1"></i>
+                        Accounts will automatically rotate per invite to share the workload without collisions
+                        (ចែកគ្នាធ្វើការ មិនជាន់គ្នា).
+                    </p>
+                </div>
+
+            </div>
+
+            <!-- RIGHT COLUMN: Scraper & Member Adder (7 Columns) -->
+            <div class="lg:col-span-7 space-y-6">
+
+                <!-- 1. Source Group Scraper Card -->
+                <div class="bg-[#111827] rounded-2xl border border-gray-800 p-5 shadow-xl">
+                    <div class="flex items-center gap-2 mb-3">
+                        <div
+                            class="w-8 h-8 rounded-lg bg-emerald-500/10 text-emerald-400 flex items-center justify-center">
+                            <i class="fas fa-cloud-download-alt"></i>
+                        </div>
+                        <div>
+                            <h2 class="text-base font-bold text-white" id="titleScraper">Scrape Source Group</h2>
+                            <p class="text-xs text-gray-400" id="descScraper">Fetch usernames or IDs from a public or
+                                joined group</p>
+                        </div>
+                    </div>
+
+                    <div class="flex gap-2">
+                        <div class="relative flex-1">
+                            <i class="fas fa-at absolute left-3 top-3 text-gray-500 text-xs"></i>
+                            <input type="text" id="sourceGroupInput"
+                                placeholder="https://t.me/source_group or @source_group"
+                                class="w-full bg-gray-900 border border-gray-700 rounded-lg pl-8 pr-3 py-2 text-sm text-gray-200 placeholder-gray-500 focus:outline-none focus:border-emerald-500 transition">
+                        </div>
+                        <button id="btnFetchMembers" onclick="fetchSourceMembers()"
+                            class="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-semibold rounded-lg text-xs flex items-center gap-2 shadow-lg shadow-emerald-600/20 transition whitespace-nowrap">
+                            <i class="fas fa-download"></i>
+                            <span id="btnFetchText">Fetch Members</span>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- 2. Member Candidates List Card -->
+                <div class="bg-[#111827] rounded-2xl border border-gray-800 p-5 shadow-xl">
+                    <div class="flex items-center justify-between mb-2">
+                        <div class="flex items-center gap-2">
+                            <div
+                                class="w-8 h-8 rounded-lg bg-purple-500/10 text-purple-400 flex items-center justify-center">
+                                <i class="fas fa-list-ul"></i>
+                            </div>
+                            <div>
+                                <h2 class="text-base font-bold text-white" id="titleMemberList">Candidate Member List
+                                </h2>
+                                <p class="text-xs text-gray-400">Total: <span id="membersCount"
+                                        class="text-cyan-400 font-bold">0</span> candidates</p>
+                            </div>
+                        </div>
+
+                        <!-- Action helper buttons -->
+                        <div class="flex items-center gap-2">
+                            <label
+                                class="cursor-pointer px-2.5 py-1 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded text-xs border border-gray-700 flex items-center gap-1 transition">
+                                <i class="fas fa-file-upload text-purple-400"></i>
+                                <span id="btnUploadTxt">Upload TXT</span>
+                                <input type="file" id="txtFileInput" accept=".txt" class="hidden"
+                                    onchange="handleTxtFileUpload(event)">
+                            </label>
+                            <button onclick="cleanAndDeduplicate()"
+                                class="px-2.5 py-1 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded text-xs border border-gray-700 transition"
+                                title="Clean and remove duplicates">
+                                <i class="fas fa-broom text-yellow-400"></i>
+                            </button>
+                            <button onclick="clearMemberList()"
+                                class="px-2.5 py-1 bg-gray-800 hover:bg-gray-700 text-red-400 rounded text-xs border border-gray-700 transition"
+                                title="Clear list">
+                                <i class="fas fa-trash"></i>
+                            </button>
+                        </div>
+                    </div>
+
+                    <textarea id="memberListTextarea" rows="6" placeholder="@username&#10;+85512345678&#10;123456789"
+                        class="w-full bg-gray-900 border border-gray-700 rounded-lg p-3 text-xs font-mono text-gray-200 placeholder-gray-600 focus:outline-none focus:border-purple-500 transition resize-y"></textarea>
+
+                    <div class="flex flex-wrap items-center justify-between gap-2 mt-2 text-xs text-gray-400">
+                        <span id="textareaHint">Paste usernames, phone numbers, or IDs (one per line).</span>
+                        <button onclick="generateRandomKhmerPhones()"
+                            class="text-cyan-400 hover:underline flex items-center gap-1">
+                            <i class="fas fa-random"></i> <span id="btnGenPhones">Generate Random Phone Numbers</span>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- 3. Target Group & Adding Engine -->
+                <div class="bg-[#111827] rounded-2xl border border-gray-800 p-5 shadow-xl space-y-4">
+                    <div class="flex items-center gap-2">
+                        <div class="w-8 h-8 rounded-lg bg-blue-500/10 text-blue-400 flex items-center justify-center">
+                            <i class="fas fa-user-plus"></i>
+                        </div>
+                        <div>
+                            <h2 class="text-base font-bold text-white" id="titleTarget">Target Group & Adder Engine</h2>
+                            <p class="text-xs text-gray-400" id="descTarget">Set your destination group and invite
+                                parameters</p>
+                        </div>
+                    </div>
+
+                    <!-- Target Group Input -->
+                    <div>
+                        <label class="block text-xs font-semibold text-gray-300 mb-1" id="lblTargetGroup">Target Group
+                            Link / Username</label>
+                        <div class="relative">
+                            <i class="fas fa-bullseye absolute left-3 top-3 text-gray-500 text-xs"></i>
+                            <input type="text" id="targetGroupInput"
+                                placeholder="https://t.me/target_group or @target_group"
+                                class="w-full bg-gray-900 border border-gray-700 rounded-lg pl-8 pr-3 py-2 text-sm text-gray-200 placeholder-gray-500 focus:outline-none focus:border-blue-500 transition">
+                        </div>
+                    </div>
+
+                    <!-- Settings: Delay and Max Invites -->
+                    <div
+                        class="grid grid-cols-1 sm:grid-cols-2 gap-4 bg-gray-900/60 p-3 rounded-xl border border-gray-800 text-xs">
+                        <!-- Delay -->
+                        <div>
+                            <div class="flex justify-between items-center mb-1">
+                                <span class="text-gray-300" id="lblDelay">Invite Delay:</span>
+                                <span id="delayValueText" class="font-bold text-cyan-400">3s</span>
+                            </div>
+                            <input type="range" id="delaySlider" min="1" max="30" value="3"
+                                class="w-full accent-cyan-500 cursor-pointer"
+                                oninput="document.getElementById('delayValueText').innerText = this.value + 's'">
+                            <span class="text-[10px] text-gray-500">Wait between invites (prevents flood limits)</span>
+                        </div>
+
+                        <!-- Max Per Account -->
+                        <div>
+                            <div class="flex justify-between items-center mb-1">
+                                <span class="text-gray-300" id="lblMaxAcc">Max per standard account:</span>
+                                <span id="maxAccValueText" class="font-bold text-purple-400">30</span>
+                            </div>
+                            <input type="range" id="maxAccSlider" min="5" max="100" value="30"
+                                class="w-full accent-purple-500 cursor-pointer"
+                                oninput="document.getElementById('maxAccValueText').innerText = this.value">
+                            <span class="text-[10px] text-gray-500">⭐ Premium accounts get Unlimited invites</span>
+                        </div>
+                    </div>
+
+                    <!-- Start / Stop Action Buttons -->
+                    <div class="flex items-center gap-3 pt-2">
+                        <button id="btnStartAdd" onclick="startAddingMembers()"
+                            class="flex-1 py-3 bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-white font-bold rounded-xl shadow-lg shadow-cyan-500/25 flex items-center justify-center gap-2 transition transform active:scale-95">
+                            <i class="fas fa-play"></i>
+                            <span id="btnStartText">START ADDING MEMBERS</span>
+                        </button>
+                        <button id="btnStopAdd" onclick="stopAddingMembers()" disabled
+                            class="px-5 py-3 bg-red-600/80 hover:bg-red-500 disabled:opacity-40 disabled:cursor-not-allowed text-white font-bold rounded-xl transition flex items-center gap-2 shadow-lg shadow-red-600/20">
+                            <i class="fas fa-stop"></i>
+                            <span id="btnStopText">STOP</span>
+                        </button>
+                    </div>
+
+                    <!-- Progress Bar & Status -->
+                    <div class="space-y-1.5 pt-2">
+                        <div class="flex justify-between items-center text-xs">
+                            <span id="jobStatusText" class="text-gray-300 font-medium">Ready</span>
+                            <span id="jobProgressPercent" class="font-mono text-cyan-400 font-bold">0%</span>
+                        </div>
+                        <div class="w-full h-2.5 bg-gray-900 rounded-full overflow-hidden border border-gray-800">
+                            <div id="jobProgressBar"
+                                class="h-full bg-gradient-to-r from-cyan-500 to-blue-500 transition-all duration-300"
+                                style="width: 0%"></div>
+                        </div>
+                        <div class="flex justify-between items-center text-[11px] text-gray-500">
+                            <span>Added: <strong id="statAdded" class="text-emerald-400">0</strong></span>
+                            <span>Skipped / Failed: <strong id="statSkipped" class="text-yellow-400">0</strong></span>
+                            <span>Total Candidates: <strong id="statTotal" class="text-gray-300">0</strong></span>
+                        </div>
+                    </div>
+
+                    <!-- Live Real-Time Console Terminal -->
+                    <div class="bg-gray-950 rounded-xl border border-gray-800 p-3">
+                        <div
+                            class="flex items-center justify-between border-b border-gray-800 pb-2 mb-2 text-xs text-gray-400">
+                            <span class="flex items-center gap-1.5 font-mono">
+                                <i class="fas fa-terminal text-cyan-400"></i> Live Activity Console
+                            </span>
+                            <button onclick="clearConsoleLogs()"
+                                class="hover:text-gray-200 transition text-[10px]">Clear</button>
+                        </div>
+                        <div id="consoleLogArea" class="h-36 overflow-y-auto space-y-1 font-mono text-[11px] pr-1">
+                            <div class="text-gray-600">[System ready. Waiting for tasks...]</div>
+                        </div>
+                    </div>
+
+                </div>
+
+            </div>
+
+        </div>
+
+    </main>
+
+    <!-- Footer -->
+    <footer class="border-t border-gray-800 py-4 text-center text-xs text-gray-500 bg-[#0d121c]">
+        Telegram Member Manager Web • Designed for speed, safety & stability • Contact Admin:
+        <a href="https://t.me/kun_amra" target="_blank" class="text-cyan-400 hover:underline">@kun_amra</a>
+    </footer>
+
+    <!-- ============================================================== -->
+    <!-- MODAL 1: License Activation Modal -->
+    <!-- ============================================================== -->
+    <div id="licenseModal"
+        class="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 hidden">
+        <div
+            class="bg-[#111827] border border-cyan-500/40 rounded-2xl w-full max-w-md p-6 shadow-2xl relative animate-fade-in">
+            <button onclick="closeLicenseModal()"
+                class="absolute top-4 right-4 text-gray-400 hover:text-white transition">
+                <i class="fas fa-times"></i>
+            </button>
+
+            <div class="text-center mb-5">
+                <div
+                    class="w-14 h-14 mx-auto rounded-2xl bg-cyan-500/10 border border-cyan-500/30 flex items-center justify-center text-cyan-400 text-2xl mb-3 shadow-lg shadow-cyan-500/10">
+                    <i class="fas fa-key"></i>
+                </div>
+                <h3 class="text-lg font-bold text-white" id="modalLicTitle">Tool Activation & License</h3>
+                <p class="text-xs text-gray-400 mt-1" id="modalLicDesc">Enter your license key to unlock Telegram
+                    account login and adding tools.</p>
+            </div>
+
+            <!-- Machine ID Section -->
+            <div class="mb-4 bg-gray-900/80 border border-cyan-500/20 rounded-xl p-3">
+                <div class="flex items-center justify-between mb-1">
+                    <span class="text-[11px] font-semibold text-gray-300 flex items-center gap-1.5">
+                        <i class="fas fa-fingerprint text-cyan-400"></i>
+                        Your Machine ID
+                    </span>
+                    <span class="text-[10px] text-gray-500">Required to request a license</span>
+                </div>
+
+                <!-- Machine ID Display + Copy -->
+                <div class="flex items-center gap-2 mt-1">
+                    <code id="machineIdDisplay"
+                        class="flex-1 bg-gray-950 border border-gray-700 rounded-lg px-3 py-2 text-xs font-mono text-cyan-300 tracking-wider truncate select-all cursor-text">Generating...</code>
+                    <button onclick="copyMachineId()" id="btnCopyMachineId" title="Copy Machine ID"
+                        class="shrink-0 w-9 h-9 flex items-center justify-center rounded-lg bg-gray-800 hover:bg-cyan-600 text-gray-300 hover:text-white border border-gray-700 hover:border-cyan-500 transition">
+                        <i class="fas fa-copy text-xs"></i>
+                    </button>
+                </div>
+
+                <!-- Send to Admin button -->
+                <button onclick="requestKeyFromAdmin()" id="btnRequestAdmin"
+                    class="mt-2.5 w-full py-2 bg-blue-600/80 hover:bg-blue-500 text-white text-xs font-semibold rounded-lg flex items-center justify-center gap-2 transition shadow-md shadow-blue-600/20">
+                    <i class="fab fa-telegram"></i>
+                    <span id="txtRequestAdminBtn">Copy ID &amp; Request License from Admin @kun_amra</span>
+                </button>
+                <p class="text-[10px] text-gray-500 mt-1.5 text-center" id="txtMachineIdHint">
+                    Your Machine ID identifies your device. Send it to admin to receive your personal license key.
+                </p>
+            </div>
+
+            <!-- License Key Input Form -->
+            <div class="space-y-3">
+                <div>
+                    <label class="block text-xs font-semibold text-gray-300 mb-1" id="lblEnterKey">License Key</label>
+                    <input type="text" id="licenseKeyInput" placeholder="TGADD-XXXX-XXXX-XXXX"
+                        class="w-full bg-gray-900 border border-gray-700 rounded-lg px-3 py-2.5 text-center text-sm font-mono text-cyan-400 tracking-wider placeholder-gray-600 focus:outline-none focus:border-cyan-500 transition">
+                </div>
+
+                <div id="licenseModalError"
+                    class="hidden text-xs text-red-400 bg-red-950/40 border border-red-800 rounded-lg p-2.5 text-center">
+                </div>
+                <div id="licenseModalSuccess"
+                    class="hidden text-xs text-emerald-400 bg-emerald-950/40 border border-emerald-800 rounded-lg p-2.5 text-center">
+                </div>
+
+                <button onclick="submitLicenseActivation()" id="btnActivateKey"
+                    class="w-full py-2.5 bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-white font-bold rounded-xl shadow-lg shadow-cyan-500/25 transition flex items-center justify-center gap-2">
+                    <i class="fas fa-unlock-alt"></i>
+                    <span>Activate License Key</span>
+                </button>
+
+                <!-- Quick Test Keys -->
+                <!-- <div class="border-t border-gray-800 pt-3">
+                    <p class="text-[11px] text-gray-500 mb-2 text-center">Demo keys for testing (click to fill):</p>
+                    <div class="flex flex-wrap justify-center gap-2">
+                        <button onclick="fillDemoKey('TGADD-VIP-LIFETIME-ACCESS')" class="text-[10px] px-2.5 py-1 bg-gray-800 hover:bg-cyan-900/40 border border-gray-700 hover:border-cyan-600 rounded text-cyan-300 transition">
+                            <i class="fas fa-crown text-amber-400 mr-1"></i> VIP Lifetime
+                        </button>
+                        <button onclick="fillDemoKey('TGADD-TRIAL-30DAYS-PASS')" class="text-[10px] px-2.5 py-1 bg-gray-800 hover:bg-yellow-900/30 border border-gray-700 hover:border-yellow-600 rounded text-yellow-300 transition">
+                            <i class="fas fa-clock text-yellow-400 mr-1"></i> 30-Day Trial
+                        </button>
+                    </div>
+                </div> -->
+            </div>
+        </div>
+    </div>
+
+    <!-- ============================================================== -->
+    <!-- MODAL 2: Add Telegram Account Modal (Multi-Step Wizard) -->
+    <!-- ============================================================== -->
+    <div id="addAccountModal"
+        class="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 hidden">
+        <div class="bg-[#111827] border border-gray-700 rounded-2xl w-full max-w-md p-6 shadow-2xl relative">
+            <button onclick="closeAddAccountModal()"
+                class="absolute top-4 right-4 text-gray-400 hover:text-white transition">
+                <i class="fas fa-times"></i>
+            </button>
+
+            <!-- Header -->
+            <div class="text-center mb-3">
+                <div
+                    class="w-12 h-12 mx-auto rounded-xl bg-blue-500/10 text-blue-400 flex items-center justify-center text-xl mb-2">
+                    <i class="fab fa-telegram-plane"></i>
+                </div>
+                <h3 class="text-base font-bold text-white" id="titleStep1">Add Telegram Account</h3>
+                <p class="text-xs text-gray-400 mt-0.5" id="descStep1">Auto-login with Telegram or use Phone Number</p>
+            </div>
+
+            <!-- Mode Selector Tabs: Phone OTP vs QR Scan -->
+            <div class="flex bg-gray-900/90 p-1 rounded-xl border border-gray-800 mb-3">
+                <button type="button" onclick="switchLoginMode('phone')" id="tabLoginPhone"
+                    class="flex-1 py-1.5 text-xs font-semibold rounded-lg transition bg-cyan-600 text-white shadow-sm flex items-center justify-center gap-1.5">
+                    <i class="fas fa-phone text-xs"></i>
+                    <span id="txtTabPhone">Phone Number + Code</span>
+                </button>
+                <button type="button" onclick="switchLoginMode('qr')" id="tabLoginQr"
+                    class="flex-1 py-1.5 text-xs font-semibold rounded-lg transition text-gray-400 hover:text-white flex items-center justify-center gap-1.5">
+                    <i class="fas fa-qrcode text-xs"></i>
+                    <span id="txtTabQr">Scan QR Code</span>
+                </button>
+            </div>
+
+            <!-- ============================================== -->
+            <!-- MODE 1: QR Code Tab                            -->
+            <!-- ============================================== -->
+            <div id="panelLoginQr" class="space-y-3 hidden">
+                <!-- QR Loading Indicator -->
+                <div id="qrLoadingState" class="py-10 text-center space-y-3">
+                    <i class="fas fa-circle-notch fa-spin text-3xl text-cyan-400"></i>
+                    <p class="text-xs text-gray-400" id="txtGeneratingQr">Connecting to Telegram to generate QR Code...</p>
+                </div>
+
+                <!-- QR Code Display Content -->
+                <div id="qrContentState" class="hidden text-center space-y-3">
+                    <div class="relative inline-block mx-auto p-2.5 bg-white rounded-2xl shadow-xl border-4 border-cyan-500/30">
+                        <img id="qrCodeImg" src="" alt="Telegram Login QR Code" class="w-48 h-48 mx-auto rounded-lg">
+                    </div>
+
+                    <div class="space-y-1">
+                        <p class="text-xs font-semibold text-gray-200" id="txtScanInstruction">
+                            Open Telegram Mobile > Settings > Devices > Link Desktop Device
+                        </p>
+                        <p class="text-[11px] text-gray-400" id="txtScanSub">
+                            Scan this QR code with your phone camera in Telegram
+                        </p>
+                    </div>
+
+                    <!-- Notice if desktop shows outdated error -->
+                    <div class="bg-amber-500/10 border border-amber-500/30 rounded-xl p-2.5 text-left space-y-1 text-xs">
+                        <div class="flex items-center gap-1.5 text-amber-300 font-semibold text-[11px]">
+                            <i class="fas fa-info-circle text-amber-400"></i>
+                            <span>Tip for Telegram Desktop Users</span>
+                        </div>
+                        <p class="text-[10px] text-gray-300">
+                            If Telegram Desktop says "app version is outdated and does not support entering code via a link", please scan this QR with your <b>Phone</b>, or switch to <b>Phone Number + Code</b> to receive the 5-digit code in Telegram!
+                        </p>
+                        <button type="button" onclick="switchLoginMode('phone')" class="w-full mt-1 py-1.5 bg-cyan-600/30 hover:bg-cyan-600/50 border border-cyan-500/40 text-cyan-300 hover:text-white rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition">
+                            <i class="fas fa-keyboard"></i>
+                            <span>Switch to Enter Code Manually</span>
+                        </button>
+                    </div>
+
+                    <!-- Live Polling Status Indicator -->
+                    <div class="flex items-center justify-center gap-2 text-[11px] text-cyan-300 bg-cyan-950/40 border border-cyan-800/50 py-1.5 px-3 rounded-lg">
+                        <span class="w-2 h-2 rounded-full bg-cyan-400 animate-ping"></span>
+                        <span id="txtQrStatusMsg">Waiting for confirmation in Telegram...</span>
+                    </div>
+
+                    <!-- Refresh QR Button -->
+                    <div class="flex justify-center pt-0.5">
+                        <button type="button" onclick="startQrLogin()" class="text-[11px] text-gray-400 hover:text-cyan-400 flex items-center gap-1 transition">
+                            <i class="fas fa-sync-alt text-[10px]"></i>
+                            <span id="txtRefreshQr">Refresh QR Code</span>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- 2FA Password Card (If Account Has 2FA) -->
+                <div id="qr2FaCard" class="hidden bg-amber-500/10 border border-amber-500/30 rounded-xl p-3.5 space-y-2">
+                    <div class="flex items-center justify-between">
+                        <span class="text-xs font-semibold text-amber-300 flex items-center gap-1.5">
+                            <i class="fas fa-lock text-amber-400"></i>
+                            Two-Step Verification (2FA) Password
+                        </span>
+                        <span class="text-[10px] text-amber-400 bg-amber-500/20 px-1.5 py-0.5 rounded font-bold">2FA Required</span>
+                    </div>
+                    <input type="password" id="inputQr2FaPassword" placeholder="Enter your 2FA password"
+                        onkeydown="if(event.key==='Enter') submitQr2FaPassword()"
+                        class="w-full bg-gray-900 border border-amber-600/50 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-amber-400 transition">
+                    <button type="button" onclick="submitQr2FaPassword()" id="btnSubmitQr2Fa"
+                        class="w-full py-2 bg-amber-600 hover:bg-amber-500 text-white font-bold rounded-lg text-xs transition flex items-center justify-center gap-1.5">
+                        <i class="fas fa-key"></i>
+                        <span>Confirm 2FA Password</span>
+                    </button>
+                    <div id="qr2FaError" class="hidden text-[11px] text-red-400 text-center"></div>
+                </div>
+
+                <div id="qrModalError" class="hidden text-xs text-red-400 bg-red-950/40 border border-red-800 rounded-lg p-2.5 text-center"></div>
+            </div>
+
+            <!-- ============================================== -->
+            <!-- MODE 2: Phone Number + SMS/OTP Code Tab        -->
+            <!-- ============================================== -->
+            <div id="panelLoginPhone" class="space-y-4">
+            <!-- STEP 1: API ID, Hash, Phone -->
+            <div id="stepAccountCredentials" class="space-y-4">
+
+                <!-- Quick Action Bar: Get Hash from my.telegram.org & Auto-fill Default -->
+                <div class="bg-gray-900/90 border border-cyan-500/25 rounded-xl p-2.5 flex items-center gap-2">
+                    <a href="https://my.telegram.org/apps" target="_blank" rel="noopener noreferrer"
+                        class="flex-1 py-2 px-3 bg-blue-600/30 hover:bg-blue-600/50 border border-blue-500/40 text-blue-300 hover:text-white rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition shadow-sm">
+                        <i class="fab fa-telegram text-xs"></i>
+                        <span id="btnGetHashText">Get API Hash (my.telegram.org)</span>
+                        <i class="fas fa-external-link-alt text-[9px] opacity-70"></i>
+                    </a>
+                    <button type="button" onclick="fillDefaultApiCredentials('desktop')"
+                        class="py-2 px-3 bg-cyan-600/30 hover:bg-cyan-600/50 border border-cyan-500/40 text-cyan-300 hover:text-white rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition shadow-sm"
+                        title="Auto-fill Telegram Desktop Official credentials">
+                        <i class="fas fa-magic text-xs"></i>
+                        <span id="btnAutoFillHashText">Auto-Fill Hash</span>
+                    </button>
+                </div>
+
+                <div>
+                    <div class="flex items-center justify-between mb-1">
+                        <label class="block text-xs font-semibold text-gray-300" id="lblApiId">API ID (Numeric)</label>
+                        <a href="https://my.telegram.org/apps" target="_blank" rel="noopener noreferrer"
+                            class="text-[11px] text-cyan-400 hover:underline flex items-center gap-1">
+                            <span>my.telegram.org</span>
+                            <i class="fas fa-external-link-alt text-[9px]"></i>
+                        </a>
+                    </div>
+                    <input type="number" id="inputApiId" placeholder="e.g. 12345678"
+                        class="w-full bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-200 focus:outline-none focus:border-blue-500 transition">
+                </div>
+
+                <div>
+                    <div class="flex items-center justify-between mb-1">
+                        <label class="block text-xs font-semibold text-gray-300" id="lblApiHash">API Hash</label>
+                        <div class="flex items-center gap-2">
+                            <button type="button" onclick="fillDefaultApiCredentials('desktop')"
+                                class="text-[11px] text-cyan-400 hover:underline flex items-center gap-1">
+                                <i class="fas fa-bolt text-[10px]"></i>
+                                <span>Default</span>
+                            </button>
+                            <span class="text-gray-600">|</span>
+                            <a href="https://my.telegram.org/apps" target="_blank" rel="noopener noreferrer"
+                                class="text-[11px] text-blue-400 hover:underline flex items-center gap-1">
+                                <i class="fas fa-key text-[10px]"></i>
+                                <span id="lblGetHashLink">Get Hash</span>
+                                <i class="fas fa-external-link-alt text-[9px]"></i>
+                            </a>
+                        </div>
+                    </div>
+                    <input type="text" id="inputApiHash" placeholder="e.g. 9b4d8f...32chars"
+                        class="w-full bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-200 focus:outline-none focus:border-blue-500 transition">
+                </div>
+
+                <div>
+                    <label class="block text-xs font-semibold text-gray-300 mb-1">Phone Number (with Country
+                        Code)</label>
+                    <input type="text" id="inputPhone" placeholder="+85517271771"
+                        class="w-full bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-200 focus:outline-none focus:border-blue-500 transition">
+                </div>
+
+                <div id="accountModalError"
+                    class="hidden text-xs text-red-400 bg-red-950/40 border border-red-800 rounded-lg p-2.5"></div>
+
+                <button onclick="requestTelegramCode()" id="btnSendCode"
+                    class="w-full py-2.5 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-xl transition shadow-lg shadow-blue-600/20 flex items-center justify-center gap-2">
+                    <i class="fas fa-paper-plane"></i>
+                    <span id="btnSendCodeText">Request Login Code</span>
+                </button>
+            </div>
+
+            <!-- STEP 2: Enter Telegram OTP Code -->
+            <div id="stepAccountCode" class="space-y-4 hidden">
+                <div class="text-center mb-4">
+                    <div
+                        class="w-12 h-12 mx-auto rounded-xl bg-cyan-500/10 text-cyan-400 flex items-center justify-center text-xl mb-2">
+                        <i class="fas fa-shield-alt"></i>
+                    </div>
+                    <h3 class="text-base font-bold text-white" id="titleStep2">Enter Login Code</h3>
+                    <p class="text-xs text-gray-400 mt-1" id="descStep2">Telegram sent a confirmation code for
+                        <span id="codeSentPhone" class="text-cyan-400 font-mono font-bold"></span></p>
+                    <p class="text-[11px] text-cyan-300/80 mt-1" id="codeSentHint"></p>
+                </div>
+
+                <div>
+                    <div class="flex items-center justify-between mb-1">
+                        <label class="block text-xs font-semibold text-gray-300" id="lblOtpCode">Confirmation Code (OTP)</label>
+                        <button type="button" onclick="resendTelegramCode()" id="btnResendCode"
+                            class="text-[11px] text-cyan-400 hover:text-cyan-300 flex items-center gap-1 transition">
+                            <i class="fas fa-redo text-[10px]"></i>
+                            <span>Resend Code</span>
+                        </button>
+                    </div>
+                    <input type="text" id="inputOtpCode" placeholder="12345" inputmode="numeric" autocomplete="one-time-code"
+                        onkeydown="if(event.key==='Enter') verifyTelegramCode()"
+                        class="w-full bg-gray-900 border border-gray-700 rounded-lg px-3 py-2.5 text-center text-lg font-mono tracking-widest text-white focus:outline-none focus:border-cyan-500 transition">
+                    <p class="text-[10px] text-gray-500 mt-1">You can paste the whole message from Telegram; the code is extracted automatically.</p>
+                </div>
+
+                <!-- 2FA Password Field (Shown when required or toggled) -->
+                <div id="field2FaPassword" class="hidden bg-amber-500/10 border border-amber-500/30 rounded-xl p-3 space-y-2">
+                    <div class="flex items-center justify-between">
+                        <label class="block text-xs font-semibold text-amber-300 flex items-center gap-1.5" id="lbl2FaPassword">
+                            <i class="fas fa-lock text-amber-400"></i>
+                            Two-Step Verification (2FA) Password
+                        </label>
+                        <span class="text-[10px] text-amber-400 font-bold px-1.5 py-0.5 rounded bg-amber-500/20">2FA Required</span>
+                    </div>
+                    <input type="password" id="input2FaPassword" placeholder="Enter your Telegram 2FA password"
+                        onkeydown="if(event.key==='Enter') verifyTelegramCode()"
+                        class="w-full bg-gray-900 border border-amber-600/50 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-amber-400 transition">
+                    <p class="text-[10px] text-gray-400" id="hint2FaPassword">
+                        This account is protected with a Two-Step Verification (2FA) password.
+                    </p>
+                </div>
+
+                <!-- Toggle to reveal 2FA field early -->
+                <div class="flex justify-end" id="toggle2FaWrap">
+                    <button type="button" onclick="toggle2FaField()" class="text-[11px] text-gray-400 hover:text-amber-400 transition flex items-center gap-1">
+                        <i class="fas fa-key text-[10px]"></i>
+                        <span id="btnToggle2Fa">Account has 2FA? Click to enter password</span>
+                    </button>
+                </div>
+
+                <div id="codeModalError"
+                    class="hidden text-xs text-red-400 bg-red-950/40 border border-red-800 rounded-lg p-2.5"></div>
+
+                <div class="flex gap-2">
+                    <button onclick="backToStep1()"
+                        class="px-4 py-2 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-xl text-xs font-semibold transition">
+                        <span id="btnBackStep1">Back</span>
+                    </button>
+                    <button onclick="verifyTelegramCode()" id="btnSubmitOtp"
+                        class="flex-1 py-2.5 bg-cyan-600 hover:bg-cyan-500 text-white font-bold rounded-xl transition shadow-lg shadow-cyan-600/20 flex items-center justify-center gap-2">
+                        <i class="fas fa-check-circle"></i>
+                        <span id="btnSubmitOtpText">Confirm Account</span>
+                    </button>
+                </div>
+            </div>
+            </div> <!-- End panelLoginPhone -->
+
+        </div>
+    </div>
+
+    <!-- ============================================================== -->
+    <!-- MODAL 3: Summary Breakdown Report Modal -->
+    <!-- ============================================================== -->
+    <div id="summaryModal"
+        class="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 hidden">
+        <div class="bg-[#111827] border border-gray-700 rounded-2xl w-full max-w-lg p-6 shadow-2xl relative">
+            <button onclick="closeSummaryModal()"
+                class="absolute top-4 right-4 text-gray-400 hover:text-white transition">
+                <i class="fas fa-times"></i>
+            </button>
+
+            <div class="text-center mb-5">
+                <div
+                    class="w-14 h-14 mx-auto rounded-2xl bg-emerald-500/10 text-emerald-400 flex items-center justify-center text-2xl mb-3 shadow-lg shadow-emerald-500/20">
+                    <i class="fas fa-check-circle"></i>
+                </div>
+                <h3 class="text-lg font-bold text-white" id="summaryModalTitle">Invite Processing Finished!</h3>
+                <p class="text-xs text-gray-400 mt-1" id="summaryModalDesc">Multi-account load-balancing summary</p>
+            </div>
+
+            <div class="space-y-4 text-xs">
+                <div class="grid grid-cols-2 gap-3 text-center">
+                    <div class="bg-gray-900 p-3 rounded-xl border border-gray-800">
+                        <span class="text-gray-400 block mb-1">Total Added</span>
+                        <span id="sumTotalAdded" class="text-2xl font-bold text-emerald-400">0</span>
+                    </div>
+                    <div class="bg-gray-900 p-3 rounded-xl border border-gray-800">
+                        <span class="text-gray-400 block mb-1">Skipped / Failed</span>
+                        <span id="sumTotalSkipped" class="text-2xl font-bold text-yellow-400">0</span>
+                    </div>
+                </div>
+
+                <div class="bg-gray-900 p-3.5 rounded-xl border border-gray-800">
+                    <span class="font-bold text-gray-300 block mb-2">Account Breakdown (Load-balanced):</span>
+                    <div id="sumBreakdownList" class="space-y-1.5 max-h-40 overflow-y-auto pr-1">
+                        <!-- Loaded dynamically -->
+                    </div>
+                </div>
+
+                <button onclick="closeSummaryModal()"
+                    class="w-full py-2.5 bg-gray-800 hover:bg-gray-700 text-white font-bold rounded-xl transition">
+                    Close
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- App JavaScript with Cache Busting -->
+    <script src="/static/js/app.js?v=2.0.5"></script>
+</body>
+
+</html>

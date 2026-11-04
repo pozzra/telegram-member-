@@ -1,0 +1,52 @@
+INFO:     Started server process [3656]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://127.0.0.1:8000 (Press CTRL+C to quit)
+INFO:     127.0.0.1:52248 - "WebSocket /ws/events" [accepted]
+INFO:     connection open
+INFO:     127.0.0.1:52894 - "WebSocket /ws/events" [accepted]
+INFO:     connection open
+INFO:     127.0.0.1:55991 - "WebSocket /ws/events" [accepted]
+INFO:     connection open
+INFO:     127.0.0.1:60310 - "WebSocket /ws/events" [accepted]
+INFO:     connection open
+INFO:     127.0.0.1:53299 - "WebSocket /ws/events" [accepted]
+INFO:     connection open
+INFO:     127.0.0.1:54253 - "WebSocket /ws/events" [accepted]
+INFO:     connection open
+INFO:     127.0.0.1:55814 - "WebSocket /ws/events" [accepted]
+INFO:     connection open
+INFO:     127.0.0.1:52922 - "WebSocket /ws/events" [accepted]
+INFO:     connection open
+INFO:     127.0.0.1:57974 - "WebSocket /ws/events" [accepted]
+INFO:     connection open
+INFO:     127.0.0.1:64706 - "WebSocket /ws/events" [accepted]
+INFO:     connection open
+INFO:     127.0.0.1:65064 - "WebSocket /ws/events" [accepted]
+INFO:     connection open
+INFO:     127.0.0.1:54953 - "WebSocket /ws/events" [accepted]
+INFO:     connection open
+INFO:     127.0.0.1:61063 - "WebSocket /ws/events" [accepted]
+INFO:     connection open
+INFO:     127.0.0.1:56782 - "WebSocket /ws/events" [accepted]
+INFO:     connection open
+INFO:     127.0.0.1:55763 - "WebSocket /ws/events" [accepted]
+INFO:     connection open
+INFO:     127.0.0.1:57248 - "WebSocket /ws/events" [accepted]
+INFO:     connection open
+INFO:     127.0.0.1:61676 - "WebSocket /ws/events" [accepted]
+INFO:     connection open
+INFO:     127.0.0.1:61639 - "WebSocket /ws/events" [accepted]
+INFO:     connection open
+INFO:     127.0.0.1:50681 - "WebSocket /ws/events" [accepted]
+INFO:     connection open
+INFO:     127.0.0.1:56246 - "WebSocket /ws/events" [accepted]
+INFO:     connection open
+INFO:     127.0.0.1:57286 - "WebSocket /ws/events" [accepted]
+INFO:     connection open
+INFO:     127.0.0.1:64901 - "WebSocket /ws/events" [accepted]
+INFO:     connection open
+INFO:     127.0.0.1:50587 - "WebSocket /ws/events" [accepted]
+INFO:     connection open
+INFO:     127.0.0.1:57201 - "WebSocket /ws/events" [accepted]
+INFO:     connection open
