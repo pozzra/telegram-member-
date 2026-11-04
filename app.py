@@ -37,9 +37,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Static files are served by @vercel/static on Vercel; skip the mount there.
-if not IS_VERCEL:
-    app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
+# Serve static files (CSS, JS) — available in deployment bundle on Vercel.
+# Only /tmp is read-only; static/ and templates/ are readable.
+app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
 
 # Connected WebSocket clients for real-time live progress and logs
