@@ -37,7 +37,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
+# Static files are served by @vercel/static on Vercel; skip the mount there.
+if not IS_VERCEL:
+    app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
 
 # Connected WebSocket clients for real-time live progress and logs
