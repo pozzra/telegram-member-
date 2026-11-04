@@ -1,107 +1,126 @@
-# Telegram Adder Pro - Web Edition & License Bot
+# Telegram Adder Pro – Web Edition & License Bot
 
-A full-stack asynchronous Python web application ported directly from `TelegramAdder.py` (Desktop GUI) to a web interface featuring **Multi-Account Load Balancing**, **Telegram Premium Unlimited Inviting**, **Member Scraping**, **Vercel Serverless Hosting Support**, and an **Automated Telegram License Bot**.
-
----
-
-## 🌟 Complete System Architecture
-
-```
-                                  ┌────────────────────────┐
-                                  │   Telegram Web App     │
-                                  │  (FastAPI / Vercel)    │
-                                  └──────────┬─────────────┘
-                                             │
-                       1. Shows unique Machine ID (MID-...)
-                       2. User clicks "Request License"
-                                             │
-                                             ▼
-                                  ┌────────────────────────┐
-                                  │ Telegram License Bot   │
-                                  │       (bot.py)         │
-                                  └──────────┬─────────────┘
-                                             │
-                       3. Sends alert to Admin (@kun_amra)
-                          with 1-click Duration Buttons:
-                          [1 Day] [3 Days] [7 Days] [30 Days] [90 Days] [Lifetime]
-                                             │
-                                             ▼
-                                  ┌────────────────────────┐
-                                  │    Admin (@kun_amra)   │
-                                  │  Taps duration button  │
-                                  └──────────┬─────────────┘
-                                             │
-                       4. Bot generates license key via DB
-                       5. Sends key directly to User in Telegram
-                                             │
-                                             ▼
-                                  ┌────────────────────────┐
-                                  │   User activates Key   │
-                                  │  Live Countdown Timer  │
-                                  │  (e.g., 23h 45m left)  │
-                                  └────────────────────────┘
-```
+A full-stack asynchronous Python web application ported from `TelegramAdder.py` (Desktop GUI) to a web interface. Features multi-account load balancing, Telegram member scraping, mass inviting, Vercel serverless hosting support, and an automated Telegram license bot.
 
 ---
 
-## 🤖 1. Automated Telegram License Bot (`bot.py`)
+## Table of Contents
 
-### Setup:
+1. [System Architecture](#system-architecture)
+2. [Automated Telegram License Bot](#automated-telegram-license-bot)
+3. [Live License Expiration Countdown](#live-license-expiration-countdown)
+4. [Hosting on Vercel](#hosting-on-vercel)
+5. [Running Locally](#running-locally)
+6. [Telegram Account Login Troubleshooting](#telegram-account-login-troubleshooting)
+7. [Default Demo Keys](#default-demo-keys)
+
+---
+
+## 1. System Architecture
+
+```
++--------------------------+      +--------------------------+      +--------------------------+
+|   Telegram Web App       |      |  Telegram License Bot    |      |     Admin (@kun_amra)    |
+|   (FastAPI / Vercel)     |      |     (bot.py)             |      |                          |
++--------------------------+      +--------------------------+      +--------------------------+
+         |                               |                                |
+         | 1. Shows Machine ID (MID-...) |                                |
+         | 2. User clicks "Request"      |                                |
+         |                               | 3. Alerts admin with buttons   |
+         |                               |    [1d] [3d] [7d] [30d] [90d]  |
+         |                               |    [Lifetime] [Reject]         |
+         |                               |                                |
+         |                               | 4. Bot generates license key   |
+         |                               | 5. Sends key to user chat      |
+         |                               |                                |
+         | 4. User activates key         |                                |
+         | 5. Live countdown timer       |                                |
+         +-------------------------------+--------------------------------+
+```
+
+### License Flow
+
+| Step | Actor | Action |
+|------|-------|--------|
+| 1 | User | App displays unique Machine ID (`MID-...`) |
+| 2 | User | Requests a license key |
+| 3 | Admin | Receives notification with duration buttons (1 Day – Lifetime) |
+| 4 | Bot | Generates license key and sends it directly to the user |
+| 5 | User | Activates the key in the web app; live countdown begins |
+
+---
+
+## 2. Automated Telegram License Bot (`bot.py`)
+
+### Setup
+
 1. Open [@BotFather](https://t.me/BotFather) on Telegram and create a bot (or use an existing one).
 2. Copy your **Bot Token**.
 3. Create a `.env` file from `.env.example`:
+
    ```bash
    copy .env.example .env
    ```
-   Add your token:
+
+4. Add your token:
+
    ```env
    BOT_TOKEN=1234567890:ABCdefGhiJklMnoPqrStuVwxYz
    ```
-4. Start the bot:
+
+5. Start the bot:
+
    ```bash
    python bot.py
    ```
+
    *(Or double-click `run_bot.bat` on Windows)*
-5. Open your bot on Telegram and send `/start` as admin (`@kun_amra`). The bot will register you as the admin!
 
-### How Admin Approves Keys:
-When any user sends their **Machine ID** (e.g. `MID-A3F9C2B1-XK7Q2M`) to the bot:
-- Admin gets an instant notification with inline buttons:
-  - `[⚡ 1 Day]`
-  - `[📅 3 Days]`
-  - `[🗓 7 Days]`
-  - `[📆 30 Days]`
-  - `[🏆 90 Days]`
-  - `[♾️ Lifetime]`
-  - `[❌ Reject]`
-- Click any button: The bot automatically creates the key in the database and sends it directly to the user's chat!
+6. Open your bot on Telegram and send `/start` as admin (`@kun_amra`). The bot will register you as the admin.
 
-### Admin Bot Commands:
-- `/genkey <MachineID> <days>` — Manually generate a key (use `0` for lifetime)
-- `/listkeys` — View the 10 most recent license keys
-- `/revoke <KEY>` — Revoke/deactivate an active key
-- `/pending` — View pending Machine ID requests
-- `/info` — Check bot health, total keys, and admin chat ID
+### How Admin Approves Keys
 
----
+When a user sends their **Machine ID** (e.g. `MID-A3F9C2B1-XK7Q2M`) to the bot:
 
-## ⏱️ 2. Live Expiration Countdown
+- The admin receives an instant notification with inline buttons:
+  - `[1 Day]`
+  - `[3 Days]`
+  - `[7 Days]`
+  - `[30 Days]`
+  - `[90 Days]`
+  - `[Lifetime]`
+  - `[Reject]`
+- Clicking a button automatically creates the key in the database and sends it directly to the user's chat.
 
-When a user activates a time-limited license (such as a **1-Day Key**):
-- The web app header displays a **live real-time ticking countdown**:
-  - `Basic (Trial) ⏳ 23h 59m 45s`
-- Color changes dynamically based on urgency:
-  - 🟢 **Green**: Active with plenty of time
-  - 🟡 **Amber**: Less than 24 hours remaining
-  - 🔴 **Red Flashing**: Less than 2 hours remaining
-  - ⚠️ **"License EXPIRED"**: When time runs out, tools lock automatically
-- Lifetime keys display `♾️ Lifetime`.
+### Admin Bot Commands
+
+| Command | Description |
+|---------|-------------|
+| `/genkey <MachineID> <days>` | Manually generate a key (use `0` for lifetime) |
+| `/listkeys` | View the 10 most recent license keys |
+| `/revoke <KEY>` | Revoke or deactivate an active key |
+| `/pending` | View pending Machine ID requests |
+| `/info` | Check bot health, total keys, and admin chat ID |
 
 ---
 
-## ☁️ 3. Hosting on Vercel
+## 3. Live License Expiration Countdown
 
-The project is pre-configured for **Vercel** serverless hosting:
+When a user activates a time-limited license:
+
+- The web app header displays a **live real-time countdown** (e.g. `Basic (Trial) – 23h 59m 45s`).
+- Colors change dynamically based on urgency:
+  - **Green**: Active with plenty of time remaining
+  - **Amber**: Less than 24 hours remaining
+  - **Red Flashing**: Less than 2 hours remaining
+  - **"License EXPIRED"**: Time has run out; tools lock automatically
+- Lifetime keys display `Lifetime`.
+
+---
+
+## 4. Hosting on Vercel
+
+The project is pre-configured for **Vercel** serverless hosting.
 
 | File | Purpose |
 |------|---------|
@@ -110,21 +129,25 @@ The project is pre-configured for **Vercel** serverless hosting:
 | `telegram_engine.py` / `license_manager.py` | Auto-detect `VERCEL` env var; use `/tmp/data` and `/tmp/sessions` on the read-only filesystem |
 | `app.py` | Skips WebSocket route on Vercel (not supported on serverless); exposes `/api/health` |
 
-### Steps to Deploy to Vercel:
+### Deploy to Vercel
 
-#### Method A: Using Vercel CLI
+#### Method A: Vercel CLI
+
 ```bash
 npm install -g vercel
 vercel
 ```
 
-#### Method B: Using GitHub + Vercel Dashboard
+#### Method B: GitHub + Vercel Dashboard
+
 1. Push this project folder to a GitHub repository.
 2. Go to [vercel.com](https://vercel.com) and click **"Add New Project"**.
 3. Select your GitHub repository.
-4. Click **Deploy**. Vercel will install `requirements.txt` and launch the app!
+4. Click **Deploy**. Vercel installs `requirements.txt` and launches the app.
 
-### Required Environment Variables (set in Vercel Dashboard → Settings → Environment Variables)
+### Required Environment Variables
+
+Set these in the Vercel Dashboard (**Settings → Environment Variables**):
 
 | Variable | Example | Notes |
 |----------|---------|-------|
@@ -132,76 +155,66 @@ vercel
 | `TELEGRAM_API_ID` | `12345678` | Your own API ID from [my.telegram.org/apps](https://my.telegram.org/apps) |
 | `TELEGRAM_API_HASH` | `0123456789abcdef...` | Your own API hash from [my.telegram.org/apps](https://my.telegram.org/apps) |
 | `DEFAULT_COUNTRY_CODE` | `855` | Default country code for local phone numbers |
-| `BOT_TOKEN` | `1234567890:ABC...` | Only needed if you also run `bot.py` separately |
-| `ADMIN_CHAT_ID` | `1208908312` | Telegram admin chat ID for license bot |
+| `BOT_TOKEN` | `1234567890:ABC...` | Only needed if running `bot.py` separately |
+| `ADMIN_CHAT_ID` | `1208908312` | Telegram admin chat ID for the license bot |
 
-### Important Limitations on Vercel Serverless
+### Limitations on Vercel Serverless
 
-1. **No WebSockets** — The live progress/logs WebSocket (`/ws/events`) is disabled on Vercel. Member addition progress will not stream in real time.
-2. **Ephemeral storage** — `/tmp` is temporary. Account sessions (`sessions/*.session`), `data/accounts.json`, and `data/pending_logins.json` do **not** persist across serverless invocations. For reliable, long-running account management, run on a VPS or local machine instead.
-3. **Short-lived connections** — Each HTTP request runs in a fresh environment. Telegram clients connect, perform their action (send code / verify / scrape), and disconnect within the same request.
-4. **No background jobs** — Member scraping/adding cannot run as a background task on serverless.
+1. **No WebSockets** – The live progress/logs WebSocket (`/ws/events`) is disabled. Member addition progress will not stream in real time.
+2. **Ephemeral storage** – `/tmp` is temporary. Account sessions (`sessions/*.session`), `data/accounts.json`, and `data/pending_logins.json` do **not** persist across serverless invocations. For reliable long-running account management, run on a VPS or local machine instead.
+3. **Short-lived connections** – Each HTTP request runs in a fresh environment. Telegram clients connect, perform their action (send code / verify / scrape), and disconnect within the same request.
+4. **No background jobs** – Member scraping/adding cannot run as a background task on serverless.
 
-> **Recommendation:** Use Vercel for the dashboard/UI and license activation, but run account-heavy operations (adding many members, long-term session management) on a local PC or VPS where the standard `run_web.bat` / `python start_server.py` setup is used.
+> **Recommendation:** Use Vercel for the dashboard/UI and license activation. For account-heavy operations (adding many members, long-term session management), run on a local PC or VPS using `run_web.bat` / `python start_server.py`.
 
 ---
 
-## 💻 4. Running Locally
+## 5. Running Locally
 
-### Start Web Server:
+### Start the Web Server
+
 ```bash
 python start_server.py
 ```
-*(Or double-click `run_web.bat`)*  
+
+*(Or double-click `run_web.bat` on Windows)*
+
 Opens at: **http://127.0.0.1:8000**
 
-### Start License Bot:
+### Start the License Bot
+
 ```bash
 python bot.py
 ```
-*(Or double-click `run_bot.bat`)*
 
-> **Important:** Open the dashboard from **http://127.0.0.1:8000**.
-> If you open `templates/index.html` with VS Code Live Server (port 5500),
-> the page is served without Jinja rendering and cross-origin API calls can be
-> blocked by the browser. The account login flow is designed to run through
-> the FastAPI server on port 8000.
+*(Or double-click `run_bot.bat` on Windows)*
 
----
+### Important
 
-## 🔐 Telegram Account Login Troubleshooting
-
-1. **Use a phone number in international format**, e.g. `+85517271771`.
-   Local numbers starting with `0` are converted using `DEFAULT_COUNTRY_CODE`
-   (default `855`).
-2. **The code may arrive inside Telegram** (from the official "Telegram"
-   service chat) **or by SMS**. If it does not arrive within a minute, click
-   **Resend Code** in the login dialog.
-3. **2FA accounts** must enter the Telegram cloud password after confirming the
-   code. The dialog detects this automatically.
-4. **Flood wait / "Too many attempts"** means Telegram is rate-limiting the
-   login. Wait for the time shown in the error (often 5 minutes to several
-   hours). Repeatedly clicking "Request code" makes the wait longer.
-5. **Use your own API ID and API Hash** from
-   [my.telegram.org/apps](https://my.telegram.org/apps) for the most reliable
-   login. The built-in fallback credentials are shared by many users and are
-   more likely to hit Telegram limits.
-6. **The phone number must already have a Telegram account.** Telegram does not
-   allow third-party apps to create new accounts.
-7. **QR login** is the easiest option when you are already signed in on your
-   phone: Telegram → Settings → Devices → Link Desktop Device → scan the QR.
-   The dashboard now refreshes an expired QR automatically.
-8. **Vercel note:** serverless `/tmp` storage is temporary. For reliable account
-   sessions, run the web dashboard on a normal PC/VPS or use QR/phone login on
-   the same running instance.
+Open the dashboard from **http://127.0.0.1:8000**. Do not open `templates/index.html` directly with VS Code Live Server (port 5500) — the page is served without Jinja rendering, and cross-origin API calls may be blocked by the browser. The account login flow is designed to run through the FastAPI server on port 8000.
 
 ---
 
-## 🔑 Default Demo Keys (For Testing)
+## 6. Telegram Account Login Troubleshooting
+
+| Issue | Solution |
+|-------|----------|
+| **Phone format** | Use international format (e.g. `+85517271771`). Local numbers starting with `0` are converted using `DEFAULT_COUNTRY_CODE` (default `855`). |
+| **Code not received** | The code may arrive inside Telegram (from the official "Telegram" service chat) or by SMS. If it does not arrive within a minute, click **Resend Code** in the login dialog. |
+| **2FA enabled** | Enter the Telegram cloud password after confirming the code. The dialog detects this automatically. |
+| **Flood wait / rate limit** | Telegram is rate-limiting login attempts. Wait for the time shown in the error (often 5 minutes to several hours). Repeatedly clicking "Request code" makes the wait longer. |
+| **Shared API credentials** | Use your own API ID and API Hash from [my.telegram.org/apps](https://my.telegram.org/apps) for the most reliable login. Built-in fallback credentials are shared and more likely to hit limits. |
+| **No Telegram account** | The phone number must already have a Telegram account. Third-party apps cannot create new accounts. |
+| **QR login** | Easiest option when already signed in on your phone: Telegram Settings → Devices → Link Desktop Device → scan the QR. The dashboard refreshes an expired QR automatically. |
+| **Vercel storage** | Serverless `/tmp` storage is temporary. For reliable account sessions, run on a normal PC/VPS or use QR/phone login on the same running instance. |
+
+---
+
+## 7. Default Demo Keys (For Testing)
 
 | License Key | Tier | Expiration | Note |
-|---|---|---|---|
+|-------------|------|------------|------|
 | `TGADD-VIP-LIFETIME-ACCESS` | VIP (Unlimited) | Lifetime | Master Admin Key |
 | `TGADD-TRIAL-30DAYS-PASS` | PRO (50 Accounts) | 30 Days | Trial Pass |
-#   t e l e g r a m - m e m b e r -  
- 
+
+---
