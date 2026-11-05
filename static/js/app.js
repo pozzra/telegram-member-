@@ -1574,6 +1574,15 @@ async function startAddingMembers() {
         return;
     }
 
+    const activeAccounts = currentAccounts.filter(a => a.enabled && !a.spam_flagged && !a.needs_reauth);
+    if (activeAccounts.length === 0) {
+        const msg = currentLanguage === "km"
+            ? "មិនមានគណនី Telegram សកម្ម ឬត្រូវបានអនុញ្ញាតទេ! សូមពិនិត្យមើលគណនី ឬចុច Re-login។"
+            : "No active authorized Telegram accounts found! Please enable an account or re-login.";
+        alert(msg);
+        return;
+    }
+
     const btnStart = document.getElementById("btnStartAdd");
     const btnStop = document.getElementById("btnStopAdd");
 
@@ -1581,78 +1590,149 @@ async function startAddingMembers() {
     btnStop.disabled = false;
     isJobRunning = true;
     const pBar = document.getElementById("jobProgressBar");
-    if (pBar) pBar.classList.add("animate-stripes");
-
-    try {
-        const res = await fetch(`${API_BASE}/api/members/start-add`, {
-            method: "POST",
-            headers: getAuthHeaders(),
-            body: JSON.stringify({
-                target_group: targetGroup,
-                members,
-                delay,
-                max_per_account: maxPerAcc,
-                accounts_override: currentAccounts
-            })
-        });
-        const data = await res.json();
-        if (!res.ok || !data.success) {
-            const errMsg = data.detail || data.message || "Failed to start adding members.";
-            logConsole(`Start Adding Error: ${errMsg}`, "error");
-            if (errMsg.toLowerCase().includes("not authorized") || errMsg.toLowerCase().includes("re-login")) {
-                const m = errMsg.match(/\+?\d{7,15}/);
-                const unauthPhone = m ? m[0] : "";
-                if (unauthPhone) {
-                    currentAccounts.forEach(a => {
-                        if (a.phone_number === unauthPhone) {
-                            a.needs_reauth = true;
-                            a.session_string = "";
-                        }
-                    });
-                    saveAccountsToLocalStorage(currentAccounts);
-                    renderAccounts(currentAccounts);
-                }
-                const promptMsg = currentLanguage === "km"
-                    ? `គណនី ${unauthPhone || ""} ផុតកំណត់ការអនុញ្ញាត (Unauthorized)។ សូមចុចប៊ូតុង "🔑 Re-login" លើគណនីនោះដើម្បីភ្ជាប់ឡើងវិញ!`
-                    : `Account ${unauthPhone || ""} is not authorized. Please click "🔑 Re-login" to reconnect.`;
-                alert(promptMsg);
-            } else {
-                alert(errMsg);
-            }
-            btnStart.disabled = false;
-            btnStop.disabled = true;
-            isJobRunning = false;
-            if (pBar) pBar.classList.remove("animate-stripes");
-        } else {
-            logConsole(`Started member addition process to ${targetGroup}`, "info");
-        }
-    } catch (err) {
-        alert("Error: " + err.message);
-        btnStart.disabled = false;
-        btnStop.disabled = true;
-        isJobRunning = false;
-        if (pBar) pBar.classList.remove("animate-stripes");
+    if (pBar) {
+        pBar.classList.add("animate-stripes");
+        pBar.style.width = "0%";
     }
+
+    // Initialize UI counters
+    document.getElementById("statAdded").innerText = "0";
+    document.getElementById("statSkipped").innerText = "0";
+    document.getElementById("statTotal").innerText = members.length;
+    document.getElementById("jobProgressPercent").innerText = "0%";
+
+    const breakdown = {};
+    activeAccounts.forEach(a => {
+        breakdown[a.phone_number] = { invites_done: 0, is_premium: !!a.is_premium, status: "ready" };
+    });
+
+    logConsole(`Initializing Telegram Adder for ${members.length} candidates -> ${targetGroup}`, "info");
+
+    let addedCount = 0;
+    let skippedCount = 0;
+    let workerIdx = 0;
+
+    for (let idx = 0; idx < members.length; idx++) {
+        if (!isJobRunning) {
+            logConsole("Process stopped by user.", "warning");
+            document.getElementById("jobStatusText").innerText = "Stopped by user";
+            break;
+        }
+
+        const candidate = members[idx];
+        const progressVal = Math.round(((idx + 1) / members.length) * 100);
+
+        // Pick available worker:
+        // Premium accounts: unlimited invites!
+        // Standard accounts: invites_done < maxPerAcc
+        const availableWorkers = activeAccounts.filter(a => {
+            const b = breakdown[a.phone_number];
+            return b && b.status === "ready" && (a.is_premium || b.invites_done < maxPerAcc);
+        });
+
+        if (availableWorkers.length === 0) {
+            logConsole("All accounts reached invite limits or were restricted.", "warning");
+            document.getElementById("jobStatusText").innerText = "All accounts limited";
+            break;
+        }
+
+        const worker = availableWorkers[workerIdx % availableWorkers.length];
+        workerIdx++;
+        const phone = worker.phone_number;
+        const premTag = worker.is_premium ? " ⭐ Premium" : "";
+
+        const statusText = `[${phone}${premTag}] Inviting ${candidate} (${idx + 1}/${members.length})...`;
+        document.getElementById("jobStatusText").innerText = statusText;
+        document.getElementById("jobProgressPercent").innerText = `${progressVal}%`;
+        if (pBar) pBar.style.width = `${progressVal}%`;
+
+        try {
+            const res = await fetch(`${API_BASE}/api/members/invite-one`, {
+                method: "POST",
+                headers: getAuthHeaders(),
+                body: JSON.stringify({
+                    target_group: targetGroup,
+                    member: candidate,
+                    account: worker,
+                    accounts_override: currentAccounts
+                })
+            });
+            const data = await res.json();
+
+            if (res.ok && data.success && data.status === "added") {
+                addedCount++;
+                breakdown[phone].invites_done++;
+                logConsole(data.message, "success");
+            } else if (data.status === "peer_flood") {
+                skippedCount++;
+                breakdown[phone].status = "limited";
+                logConsole(`⚠️ Account ${phone} hit Spam/PeerFlood limit. Switching worker.`, "warning");
+                worker.spam_flagged = true;
+                saveAccountsToLocalStorage(currentAccounts);
+                renderAccounts(currentAccounts);
+            } else if (data.status === "unauthorized") {
+                skippedCount++;
+                breakdown[phone].status = "unauthorized";
+                logConsole(`⚠️ Account ${phone} is not authorized. Please re-login.`, "error");
+                worker.needs_reauth = true;
+                worker.session_string = "";
+                saveAccountsToLocalStorage(currentAccounts);
+                renderAccounts(currentAccounts);
+            } else if (data.status === "no_admin") {
+                skippedCount++;
+                breakdown[phone].status = "no_admin";
+                logConsole(`⚠️ Account ${phone} requires admin permissions in target group.`, "error");
+            } else if (data.status === "already_participant") {
+                skippedCount++;
+                logConsole(data.message || `${candidate} is already a member.`, "info");
+            } else {
+                skippedCount++;
+                logConsole(data.message || `Skipped ${candidate}`, "warning");
+            }
+        } catch (err) {
+            skippedCount++;
+            logConsole(`Failed to invite ${candidate}: ${err.message}`, "error");
+        }
+
+        document.getElementById("statAdded").innerText = addedCount;
+        document.getElementById("statSkipped").innerText = skippedCount;
+
+        // Delay between invites (if not stopped and not last)
+        if (idx < members.length - 1 && isJobRunning) {
+            await new Promise(r => setTimeout(r, delay * 1000));
+        }
+    }
+
+    isJobRunning = false;
+    btnStart.disabled = false;
+    btnStop.disabled = true;
+    if (pBar) {
+        pBar.classList.remove("animate-stripes");
+        pBar.style.width = "100%";
+    }
+    document.getElementById("jobProgressPercent").innerText = "100%";
+    logConsole(`Adding finished! Added: ${addedCount}, Skipped/Failed: ${skippedCount}`, "success");
+
+    // Open summary modal with real numbers
+    openSummaryModal(addedCount, skippedCount, breakdown);
 }
 
 async function stopAddingMembers() {
+    isJobRunning = false;
     const pBar = document.getElementById("jobProgressBar");
     if (pBar) pBar.classList.remove("animate-stripes");
     const btnStop = document.getElementById("btnStopAdd");
-    btnStop.disabled = true;
-    btnStop.innerHTML = `<i class="fas fa-circle-notch fa-spin"></i> Stopping...`;
-
-    try {
-        await fetch(`${API_BASE}/api/members/stop-add`, {
-            method: "POST",
-            headers: getAuthHeaders()
-        });
-        logConsole("Stop request sent to server.", "warning");
-    } catch (e) {
-        console.error(e);
-    } finally {
-        btnStop.innerHTML = `<i class="fas fa-stop"></i> <span id="btnStopText">${I18N[currentLanguage].btnStopText}</span>`;
+    if (btnStop) {
+        btnStop.disabled = true;
+        btnStop.innerHTML = `<i class="fas fa-circle-notch fa-spin"></i> Stopping...`;
     }
+    logConsole("Stop request sent. Stopping adder...", "warning");
+    setTimeout(() => {
+        if (btnStop) {
+            btnStop.innerHTML = `<i class="fas fa-stop"></i> <span id="btnStopText">${I18N[currentLanguage].btnStopText}</span>`;
+        }
+    }, 1000);
+}
 }
 
 // ==========================================
@@ -1720,7 +1800,6 @@ function initWebSocket() {
 function startJobStatusFallbackPoller() {
     if (jobStatusPoller) return;
     jobStatusPoller = setInterval(async () => {
-        if (!isJobRunning) return;
         try {
             const res = await fetch(`${API_BASE}/api/members/status`, {
                 headers: getAuthHeaders()
@@ -1729,24 +1808,15 @@ function startJobStatusFallbackPoller() {
                 const data = await res.json();
                 if (data && data.job) {
                     const job = data.job;
-                    // Normalize REST field names → WS field names
-                    handleWsMessage({
-                        type: "progress",
-                        progress: job.progress || 0,
-                        status: job.status_message || "",
-                        added: job.added_count || 0,
-                        skipped: job.skipped_count || 0,
-                        total: job.total_count || 0,
-                    });
-                    if (!job.is_running && isJobRunning) {
-                        isJobRunning = false;
-                        clearInterval(jobStatusPoller);
-                        jobStatusPoller = null;
+                    if (job.is_running) {
+                        isJobRunning = true;
                         handleWsMessage({
-                            type: "finished",
+                            type: "progress",
+                            progress: job.progress || 0,
+                            status: job.status_message || "",
                             added: job.added_count || 0,
                             skipped: job.skipped_count || 0,
-                            breakdown: job.worker_breakdown || {},
+                            total: job.total_count || 0,
                         });
                     }
                 }
@@ -1754,7 +1824,7 @@ function startJobStatusFallbackPoller() {
         } catch (e) {
             // ignore network glitch
         }
-    }, 2000);
+    }, 3000);
 }
 
 function handleWsMessage(msg) {

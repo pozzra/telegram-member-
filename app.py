@@ -142,6 +142,12 @@ class StartAddRequest(BaseModel):
     max_per_account: int = 30
     accounts_override: Optional[List[Dict[str, Any]]] = None
 
+class InviteOneRequest(BaseModel):
+    target_group: str
+    member: str
+    account: Dict[str, Any]
+    accounts_override: Optional[List[Dict[str, Any]]] = None
+
 
 # ==========================================
 # Web Page Route
@@ -471,6 +477,29 @@ async def start_add_members(req: StartAddRequest, license: Dict[str, Any] = Depe
     )
 
     return {"success": True, "message": f"Started adding {len(clean_members)} members to {req.target_group}"}
+
+
+@app.post("/api/members/invite-one")
+async def invite_one_route(req: InviteOneRequest, license: Dict[str, Any] = Depends(require_active_license)):
+    mid = license.get("machine_id")
+    if not req.target_group.strip():
+        raise HTTPException(status_code=400, detail="Target group is required.")
+    if not req.member.strip():
+        raise HTTPException(status_code=400, detail="Member candidate is required.")
+    
+    # Sync accounts override if provided
+    if req.accounts_override and isinstance(req.accounts_override, list):
+        for acc in req.accounts_override:
+            if isinstance(acc, dict) and acc.get("phone_number"):
+                telegram_engine.add_or_update_account(acc, machine_id=mid)
+
+    result = await telegram_engine.invite_single_member(
+        target_group_link=req.target_group.strip(),
+        member=req.member.strip(),
+        account=req.account,
+        machine_id=mid
+    )
+    return result
 
 
 @app.post("/api/members/stop-add")

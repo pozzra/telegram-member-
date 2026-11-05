@@ -1113,6 +1113,116 @@ async def fetch_group_members(source_group_link: str, account_phone: Optional[st
     }
 
 
+WARM_CLIENTS: Dict[str, TelegramClient] = {}
+
+async def get_or_create_worker_client(account: Dict[str, Any], machine_id: Optional[str] = None) -> TelegramClient:
+    phone = account.get("phone_number", "")
+    client = WARM_CLIENTS.get(phone)
+    if client:
+        try:
+            if client.is_connected():
+                return client
+            await client.connect()
+            return client
+        except Exception:
+            WARM_CLIENTS.pop(phone, None)
+
+    api_id = int(account.get("api_id") or DEFAULT_API_ID)
+    api_hash = account.get("api_hash") or DEFAULT_API_HASH
+    session_obj = get_client_session(account, phone, machine_id)
+    client = TelegramClient(session_obj, api_id, api_hash)
+    await client.connect()
+    WARM_CLIENTS[phone] = client
+    return client
+
+
+async def invite_single_member(
+    target_group_link: str,
+    member: str,
+    account: Dict[str, Any],
+    machine_id: Optional[str] = None
+) -> Dict[str, Any]:
+    phone = account.get("phone_number", "")
+    try:
+        client = await get_or_create_worker_client(account, machine_id)
+    except Exception as exc:
+        return {"success": False, "status": "connect_failed", "message": f"Could not connect account {phone}: {exc}", "phone": phone}
+
+    if not await client.is_user_authorized():
+        WARM_CLIENTS.pop(phone, None)
+        try:
+            await client.disconnect()
+        except Exception:
+            pass
+        account["session_string"] = ""
+        account["needs_reauth"] = True
+        add_or_update_account(account, machine_id)
+        return {
+            "success": False,
+            "status": "unauthorized",
+            "message": f"Account {phone} is not authorized. Please re-login.",
+            "phone": phone
+        }
+
+    try:
+        # Resolve target group
+        target = await resolve_group_entity(client, target_group_link)
+
+        # Resolve candidate
+        if is_phone_number(member):
+            res = await client(ResolvePhoneRequest(phone=normalize_phone(member)))
+            users = [u for u in getattr(res, "users", []) if not getattr(u, "bot", False) and not getattr(u, "deleted", False)]
+            if not users:
+                return {"success": False, "status": "not_found", "message": f"Phone {member} not found in Telegram.", "phone": phone}
+            user = users[0]
+        else:
+            user = await client.get_entity(member.strip())
+
+        # Check deleted account
+        first = getattr(user, 'first_name', '') or ''
+        last = getattr(user, 'last_name', '') or ''
+        uname = getattr(user, 'username', '') or ''
+        display_name = f"{first} {last}".strip() or uname or str(getattr(user, 'id', member))
+        user_label = f"{display_name} (@{uname})" if uname else display_name
+
+        if getattr(user, 'deleted', False) or 'deleted account' in f"{first} {last}".casefold():
+            return {"success": False, "status": "deleted", "message": f"{user_label} is a deleted account.", "phone": phone}
+
+        # Check if already participant
+        try:
+            await client(GetParticipantRequest(target, user.id))
+            return {"success": False, "status": "already_participant", "message": f"{user_label} is already a member.", "phone": phone, "user_label": user_label}
+        except UserNotParticipantError:
+            pass
+        except Exception:
+            pass
+
+        # Invite user
+        await client(InviteToChannelRequest(target, [user]))
+        return {
+            "success": True,
+            "status": "added",
+            "message": f"✅ Invited {user_label} via {phone}",
+            "user_label": user_label,
+            "phone": phone
+        }
+
+    except PeerFloodError:
+        account["spam_flagged"] = True
+        add_or_update_account({"phone_number": phone, "spam_flagged": True}, machine_id)
+        return {"success": False, "status": "peer_flood", "message": f"Account {phone} hit PeerFlood spam limit.", "phone": phone}
+    except UserAlreadyParticipantError:
+        return {"success": False, "status": "already_participant", "message": f"{member} is already in the target group.", "phone": phone}
+    except (UserPrivacyRestrictedError, UserNotMutualContactError, UserChannelsTooMuchError, UserKickedError, UserBannedInChannelError, InputUserDeactivatedError) as exc:
+        return {"success": False, "status": "privacy_restricted", "message": f"⚠️ Cannot invite {member}: {exc}", "phone": phone}
+    except ChatAdminRequiredError:
+        return {"success": False, "status": "no_admin", "message": f"Account {phone} requires admin permission to invite.", "phone": phone}
+    except FloodWaitError as exc:
+        return {"success": False, "status": "flood_wait", "seconds": exc.seconds, "message": f"Account {phone} flood wait: {exc.seconds}s", "phone": phone}
+    except Exception as exc:
+        return {"success": False, "status": "error", "message": f"Failed to invite {member}: {exc}", "phone": phone}
+
+
 def stop_adding_job():
     global CURRENT_JOB
     if CURRENT_JOB["is_running"]:
