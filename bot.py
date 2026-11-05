@@ -486,29 +486,45 @@ async def on_genkey_cmd(client, msg: dict):
     # 2. Admin typed just: /genkey
     if len(parts) == 1:
         pending = bot_state.get("pending", {})
+
+        # --- Section A: Pending requests (clickable buttons) ---
         if pending:
             buttons = []
             for mid, req in list(pending.items())[:6]:
                 u = req.get("username") or req.get("user_name") or mid[:14]
                 buttons.append([{"text": f"👤 {u} ({mid})", "callback_data": f"selmid|{mid}"}])
             await send(client, chat_id,
-                "📋 <b>Select a Pending Machine ID:</b>\n\n"
-                "Or generate manually with:\n"
-                "<code>/genkey &lt;MachineID&gt; &lt;days&gt;</code>\n"
+                f"📋 <b>Pending Requests ({len(pending)}):</b>\n\n"
+                "Tap a user to generate their key:\n"
                 "<i>(days: 1, 3, 7, 30, 90, or 0/unlimited)</i>",
                 markup={"inline_keyboard": buttons}
             )
         else:
             await send(client, chat_id,
-                "📋 <b>Generate License Key:</b>\n\n"
-                "Usage: <code>/genkey &lt;MachineID&gt; &lt;days&gt;</code>\n\n"
-                "<b>Examples:</b>\n"
-                "• <code>/genkey MID-EC79B3B7-NREQIV 1</code> — 1 day\n"
-                "• <code>/genkey MID-EC79B3B7-NREQIV 3</code> — 3 days\n"
-                "• <code>/genkey MID-EC79B3B7-NREQIV 30</code> — 30 days\n"
-                "• <code>/genkey MID-EC79B3B7-NREQIV unlimited</code> — Lifetime\n\n"
-                "<i>Tip: You can also type <code>/genkey &lt;MachineID&gt;</code> to choose duration with buttons!</i>"
+                "✅ <b>No pending license requests.</b>\n\n"
+                "Usage: <code>/genkey &lt;MachineID&gt; &lt;days&gt;</code>\n"
+                "<i>(days: 1, 3, 7, 30, 90, or 0/unlimited)</i>"
             )
+
+        # --- Section B: All active license keys list ---
+        all_keys = license_manager.list_licenses()
+        active_keys = [k for k in all_keys if k.get("is_active")]
+        if active_keys:
+            lines = [f"🔑 <b>Active Licenses ({len(active_keys)}):</b>\n"]
+            for k in active_keys[:15]:
+                exp = _fmt_expires(k.get("expires_at") or "")
+                mid_disp = f"\n   🖥️ MID: <code>{k['bound_device']}</code>" if k.get("bound_device") else ""
+                lines.append(
+                    f"✅ <code>{k['key_code']}</code>\n"
+                    f"   Tier: {k.get('tier','?')} | {exp}"
+                    f"{mid_disp}"
+                )
+            if len(active_keys) > 15:
+                lines.append(f"\n<i>...and {len(active_keys)-15} more. Use /listkeys to see all.</i>")
+            await send(client, chat_id, "\n".join(lines))
+        else:
+            await send(client, chat_id, "📭 <b>No active license keys in database.</b>")
+
         return
 
     # 3. Admin typed: /genkey <MachineID> (without days)
