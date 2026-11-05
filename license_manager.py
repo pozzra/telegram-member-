@@ -56,20 +56,25 @@ def init_db():
     cursor = conn.cursor()
     cursor.execute("SELECT COUNT(*) FROM licenses")
     count = cursor.fetchone()[0]
-    if count == 0:
-        now = get_now_utc().isoformat()
-        # 1. Lifetime VIP key
-        conn.execute(
-            "INSERT INTO licenses (key_code, tier, max_accounts, is_active, created_at, expires_at, note) VALUES (?, ?, ?, ?, ?, ?, ?)",
-            ("TGADD-VIP-LIFETIME-ACCESS", "VIP (Unlimited)", 100, 1, now, None, "Default Admin Lifetime Key")
-        )
-        # 2. 30 Days Trial key
-        expires_30d = (get_now_utc() + timedelta(days=30)).isoformat()
-        conn.execute(
-            "INSERT INTO licenses (key_code, tier, max_accounts, is_active, created_at, expires_at, note) VALUES (?, ?, ?, ?, ?, ?, ?)",
-            ("TGADD-TRIAL-30DAYS-PASS", "PRO", 25, 1, now, expires_30d, "30-Day Pro Trial Key")
-        )
-        conn.commit()
+
+    now = get_now_utc().isoformat()
+    expires_30d = (get_now_utc() + timedelta(days=30)).isoformat()
+    expires_3d = (get_now_utc() + timedelta(days=3)).isoformat()
+
+    # Seed essential default & active keys using INSERT OR IGNORE so they exist on any new server/host
+    conn.execute(
+        "INSERT OR IGNORE INTO licenses (key_code, tier, max_accounts, is_active, created_at, expires_at, note) VALUES (?, ?, ?, ?, ?, ?, ?)",
+        ("TGADD-VIP-LIFETIME-ACCESS", "VIP (Unlimited)", 100, 1, now, None, "Default Admin Lifetime Key")
+    )
+    conn.execute(
+        "INSERT OR IGNORE INTO licenses (key_code, tier, max_accounts, is_active, created_at, expires_at, note) VALUES (?, ?, ?, ?, ?, ?, ?)",
+        ("TGADD-TRIAL-30DAYS-PASS", "PRO", 25, 1, now, expires_30d, "30-Day Pro Trial Key")
+    )
+    conn.execute(
+        "INSERT OR IGNORE INTO licenses (key_code, tier, max_accounts, is_active, created_at, expires_at, bound_device, note) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        ("TGADD-HEZ1-S41K-ZQJL", "Basic (Trial)", 25, 1, now, expires_3d, "MID-18E2B85D-1B81Z6", "Bot-issued key")
+    )
+    conn.commit()
     conn.close()
 
 def _format_random_key(prefix="TGADD"):
