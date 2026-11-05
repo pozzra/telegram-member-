@@ -223,6 +223,9 @@ const I18N = {
 document.addEventListener("DOMContentLoaded", () => {
     applyLanguage(currentLanguage);
     renderMachineId();
+    if (getLicenseKey()) {
+        loadAccountsFromLocalStorage();
+    }
     initWebSocket();
     checkLicenseStatus();
     startSystemStatsPoller();
@@ -240,6 +243,38 @@ function setLicenseKey(key) {
         localStorage.setItem("tgadder_license_key", key.trim());
     } else {
         localStorage.removeItem("tgadder_license_key");
+    }
+}
+
+function getAccountsStorageKey() {
+    return "tgadder_accounts_" + getMachineId();
+}
+
+function loadAccountsFromLocalStorage() {
+    try {
+        const raw = localStorage.getItem(getAccountsStorageKey());
+        if (raw) {
+            const parsed = JSON.parse(raw);
+            if (Array.isArray(parsed) && parsed.length > 0) {
+                currentAccounts = parsed;
+                renderAccounts(currentAccounts);
+                updateAccountsSummary();
+                return true;
+            }
+        }
+    } catch (e) {
+        console.error("Error reading accounts from localStorage:", e);
+    }
+    return false;
+}
+
+function saveAccountsToLocalStorage(accounts) {
+    try {
+        if (Array.isArray(accounts)) {
+            localStorage.setItem(getAccountsStorageKey(), JSON.stringify(accounts));
+        }
+    } catch (e) {
+        console.error("Error saving accounts to localStorage:", e);
     }
 }
 
@@ -375,6 +410,10 @@ async function checkLicenseStatus() {
         const data = await res.json().catch(() => ({}));
         if (data.is_active && data.license) {
             currentLicense = data.license;
+            if (data.license.bound_device) {
+                localStorage.setItem("tgadder_machine_id", data.license.bound_device);
+                renderMachineId();
+            }
             const expiresAt = data.license.expires_at;
             const isLifetime = !expiresAt || expiresAt === "Lifetime";
 
@@ -467,6 +506,10 @@ async function submitLicenseActivation() {
 
         if (res.ok && data && data.success) {
             setLicenseKey(key.toUpperCase());
+            if (data.license && data.license.bound_device) {
+                localStorage.setItem("tgadder_machine_id", data.license.bound_device);
+                renderMachineId();
+            }
             if (succBox) {
                 succBox.innerText = currentLanguage === "km"
                     ? "✅ License Key ត្រឹមត្រូវ! ឧបករណ៍ត្រូវបានដោះសោជោគជ័យ!"
@@ -508,12 +551,42 @@ async function loadAccounts() {
         }
         const data = await res.json();
         if (data.success) {
-            currentAccounts = data.accounts || [];
+            const serverAccounts = data.accounts || [];
+            if (serverAccounts.length > 0) {
+                currentAccounts = serverAccounts;
+                saveAccountsToLocalStorage(currentAccounts);
+            } else {
+                // If server accounts are empty (e.g. server restart), check localStorage cache
+                const cachedRaw = localStorage.getItem(getAccountsStorageKey());
+                if (cachedRaw) {
+                    try {
+                        const cached = JSON.parse(cachedRaw);
+                        if (Array.isArray(cached) && cached.length > 0) {
+                            currentAccounts = cached;
+                            // Sync back to server so server is also up-to-date
+                            fetch(`${API_BASE}/api/accounts/sync-cache`, {
+                                method: "POST",
+                                headers: getAuthHeaders(),
+                                body: JSON.stringify({ accounts: cached })
+                            }).catch(() => {});
+                        } else {
+                            currentAccounts = [];
+                            saveAccountsToLocalStorage([]);
+                        }
+                    } catch (e) {
+                        currentAccounts = [];
+                    }
+                } else {
+                    currentAccounts = [];
+                }
+            }
             renderAccounts(currentAccounts);
             updateAccountsSummary(data.max_accounts);
         }
     } catch (e) {
         console.error("Load accounts error:", e);
+        // On network error or server waking up, preserve cached accounts from localStorage!
+        loadAccountsFromLocalStorage();
     }
 }
 
@@ -628,6 +701,12 @@ async function deleteAccount(phone) {
     if (!confirm(currentLanguage === "km" ? `តើអ្នកពិតជាចង់លុបគណនី ${phone} ឬ?` : `Are you sure you want to remove ${phone}?`)) {
         return;
     }
+    // Optimistically remove from localStorage cache immediately
+    currentAccounts = currentAccounts.filter(a => a.phone_number !== phone);
+    saveAccountsToLocalStorage(currentAccounts);
+    renderAccounts(currentAccounts);
+    updateAccountsSummary();
+
     try {
         await fetch(`${API_BASE}/api/accounts/${encodeURIComponent(phone)}`, {
             method: "DELETE",
@@ -668,6 +747,12 @@ async function clearAllAccounts() {
     if (!confirm(currentLanguage === "km" ? "តើអ្នកចង់លុបគណនីទាំងអស់មែនទេ?" : "Are you sure you want to remove ALL connected accounts?")) {
         return;
     }
+    // Optimistically clear localStorage cache
+    currentAccounts = [];
+    saveAccountsToLocalStorage([]);
+    renderAccounts([]);
+    updateAccountsSummary();
+
     try {
         await fetch(`${API_BASE}/api/accounts/clear-all`, {
             method: "POST",

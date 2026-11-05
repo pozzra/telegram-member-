@@ -290,7 +290,9 @@ def add_or_update_account(acc_data: Dict[str, Any], machine_id: Optional[str] = 
     updated = False
     for i, a in enumerate(accounts):
         if normalize_phone(a.get("phone_number", "")) == norm:
-            accounts[i] = acc_data
+            merged = dict(a)
+            merged.update(acc_data)
+            accounts[i] = merged
             updated = True
             break
     if not updated:

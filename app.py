@@ -374,6 +374,22 @@ async def clear_spam_flag(request: Request, license: Dict[str, Any] = Depends(re
     return {"success": True, "message": f"Spam flag cleared for {phone}"}
 
 
+@app.post("/api/accounts/sync-cache")
+async def sync_accounts_cache(request: Request, license: Dict[str, Any] = Depends(require_active_license)):
+    """Restore accounts file from client localStorage cache if server accounts file was missing."""
+    mid = license.get("machine_id")
+    try:
+        body = await request.json()
+        cached = body.get("accounts", [])
+        if isinstance(cached, list) and cached:
+            existing = telegram_engine.load_accounts(mid)
+            if not existing:
+                telegram_engine.save_accounts(cached, mid)
+    except Exception:
+        pass
+    return {"success": True}
+
+
 @app.post("/api/accounts/clear-all")
 async def clear_all_accounts(license: Dict[str, Any] = Depends(require_active_license)):
     mid = license.get("machine_id")
