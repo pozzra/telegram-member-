@@ -541,21 +541,49 @@ function renderAccounts(accounts) {
     }
 
     listEl.innerHTML = accounts.map(acc => {
-        const isPrem = acc.is_premium;
-        const premBadge = isPrem ? `<span class="px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-500/20 text-amber-400 border border-amber-500/30">⭐ Premium</span>` : "";
+        const isPrem    = acc.is_premium;
+        const isSpam    = acc.spam_flagged;
+        const isDisabled = !acc.enabled;
+
+        // Badges
+        const premBadge = isPrem
+            ? `<span class="px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-500/20 text-amber-400 border border-amber-500/30">⭐ Premium</span>`
+            : "";
+        const spamBadge = isSpam
+            ? `<span class="px-1.5 py-0.5 rounded text-[10px] font-bold bg-red-500/20 text-red-400 border border-red-500/40 animate-pulse">⚠️ Spam</span>`
+            : "";
+
         const fullName = `${acc.first_name || ""} ${acc.last_name || ""}`.trim() || acc.username || acc.phone_number;
-        const userTag = acc.username ? `<span class="text-gray-400 text-xs">@${acc.username}</span>` : "";
+        const userTag  = acc.username ? `<span class="text-gray-400 text-xs">@${acc.username}</span>` : "";
+
+        // Avatar color: red if spam, amber if premium, cyan default
+        const avatarColor = isSpam
+            ? "bg-red-500/20 text-red-400 border border-red-500/40"
+            : isPrem
+                ? "bg-amber-500/20 text-amber-400 border border-amber-500/40"
+                : "bg-cyan-500/20 text-cyan-400 border border-cyan-500/30";
+
+        // Card border: red if spam
+        const cardBorder = isSpam ? "border-red-500/40 bg-red-900/10" : "border-gray-800 bg-gray-900/80";
+
+        // Clear spam button (only when flagged)
+        const clearSpamBtn = isSpam
+            ? `<button onclick="clearSpam('${acc.phone_number}')" title="Clear spam flag" class="w-7 h-7 rounded-lg hover:bg-orange-500/20 text-red-400 hover:text-orange-400 flex items-center justify-center transition text-xs">
+                <i class="fas fa-times-circle"></i>
+               </button>`
+            : "";
 
         return `
-            <div class="bg-gray-900/80 border border-gray-800 rounded-xl p-3 flex items-center justify-between gap-3 hover:border-gray-700 transition">
+            <div class="${cardBorder} border rounded-xl p-3 flex items-center justify-between gap-3 hover:border-gray-700 transition">
                 <div class="flex items-center gap-3 min-w-0">
-                    <div class="w-9 h-9 rounded-full ${isPrem ? 'bg-amber-500/20 text-amber-400 border border-amber-500/40' : 'bg-cyan-500/20 text-cyan-400 border border-cyan-500/30'} flex items-center justify-center font-bold text-xs shrink-0">
+                    <div class="w-9 h-9 rounded-full ${avatarColor} flex items-center justify-center font-bold text-xs shrink-0">
                         ${acc.first_name ? acc.first_name.charAt(0).toUpperCase() : 'T'}
                     </div>
                     <div class="min-w-0 truncate">
-                        <div class="flex items-center gap-1.5">
+                        <div class="flex items-center gap-1.5 flex-wrap">
                             <span class="text-xs font-semibold text-white truncate">${fullName}</span>
                             ${premBadge}
+                            ${spamBadge}
                         </div>
                         <div class="flex items-center gap-2 text-[11px] text-gray-400">
                             <span class="font-mono">${acc.phone_number}</span>
@@ -570,6 +598,8 @@ function renderAccounts(accounts) {
                         <input type="checkbox" ${acc.enabled ? "checked" : ""} onchange="toggleAccount('${acc.phone_number}', this.checked)" class="sr-only peer">
                         <div class="w-9 h-5 bg-gray-800 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-cyan-600"></div>
                     </label>
+
+                    ${clearSpamBtn}
 
                     <!-- Delete Button -->
                     <button onclick="deleteAccount('${acc.phone_number}')" class="w-7 h-7 rounded-lg hover:bg-red-500/20 text-gray-500 hover:text-red-400 flex items-center justify-center transition">
@@ -602,6 +632,20 @@ async function deleteAccount(phone) {
         await fetch(`${API_BASE}/api/accounts/${encodeURIComponent(phone)}`, {
             method: "DELETE",
             headers: getAuthHeaders()
+        });
+        loadAccounts();
+    } catch (e) {
+        console.error(e);
+    }
+}
+
+async function clearSpam(phone) {
+    // Clear spam_flagged flag on an account
+    try {
+        await fetch(`${API_BASE}/api/accounts/clear-spam`, {
+            method: "POST",
+            headers: getAuthHeaders(),
+            body: JSON.stringify({ phone })
         });
         loadAccounts();
     } catch (e) {
@@ -1607,10 +1651,16 @@ function openSummaryModal(added, skipped, breakdown = {}) {
     } else {
         listEl.innerHTML = entries.map(([phone, data]) => {
             const prem = data.is_premium ? '⭐ Premium' : 'Standard';
-            const statusNote = data.status && data.status !== 'ready' ? ` (${data.status})` : '';
+            const isSpam = data.status && (data.status === 'limited' || data.status.startsWith('flood_wait'));
+            const statusNote = data.status && data.status !== 'ready'
+                ? ` <span class="${isSpam ? 'text-red-400' : 'text-yellow-400'}">(${data.status})</span>`
+                : '';
+            const spamTag = isSpam
+                ? `<span class="ml-1 px-1 py-0.5 rounded text-[9px] font-bold bg-red-500/20 text-red-400 border border-red-500/40">⚠️ Spam</span>`
+                : '';
             return `
                 <div class="flex justify-between items-center text-xs py-1 border-b border-gray-800">
-                    <span class="font-mono text-gray-300">${phone} <span class="text-gray-500">(${prem})</span></span>
+                    <span class="font-mono ${isSpam ? 'text-red-300' : 'text-gray-300'}">${phone} <span class="text-gray-500">(${prem})</span>${spamTag}</span>
                     <span class="font-bold text-cyan-400">${data.invites_done} added${statusNote}</span>
                 </div>
             `;

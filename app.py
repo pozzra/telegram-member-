@@ -362,6 +362,18 @@ async def delete_account_route(phone: str, license: Dict[str, Any] = Depends(req
     return {"success": True, "message": f"Account {phone} removed."}
 
 
+@app.post("/api/accounts/clear-spam")
+async def clear_spam_flag(request: Request, license: Dict[str, Any] = Depends(require_active_license)):
+    """Clear the spam_flagged badge from an account."""
+    mid = license.get("machine_id")
+    body = await request.json()
+    phone = body.get("phone", "").strip()
+    if not phone:
+        raise HTTPException(status_code=400, detail="phone is required")
+    telegram_engine.add_or_update_account({"phone_number": phone, "spam_flagged": False}, machine_id=mid)
+    return {"success": True, "message": f"Spam flag cleared for {phone}"}
+
+
 @app.post("/api/accounts/clear-all")
 async def clear_all_accounts(license: Dict[str, Any] = Depends(require_active_license)):
     mid = license.get("machine_id")

@@ -1226,7 +1226,9 @@ async def run_adding_flow(
                 except PeerFloodError:
                     worker["status"] = "limited"
                     CURRENT_JOB["worker_breakdown"][phone]["status"] = "limited"
-                    log(f"Account {phone} hit PeerFlood limit. Rotating to next account...", "warning")
+                    log(f"⚠️ Account {phone} hit Spam/PeerFlood limit. Rotating to next account...", "warning")
+                    # Persist spam flag to accounts file so UI shows badge
+                    add_or_update_account({"phone_number": phone, "spam_flagged": True}, machine_id=machine_id)
                     # Try alternate account immediately
                     alt_available = [
                         w for w in valid_workers
@@ -1259,7 +1261,9 @@ async def run_adding_flow(
                     else:
                         worker["status"] = "flood_wait"
                         CURRENT_JOB["worker_breakdown"][phone]["status"] = f"flood_wait ({exc.seconds}s)"
-                        log(f"Account {phone} flood wait {exc.seconds}s. Switching worker.", "warning")
+                        log(f"⚠️ Account {phone} flood wait {exc.seconds}s — marked spam. Switching worker.", "warning")
+                        # Persist spam flag
+                        add_or_update_account({"phone_number": phone, "spam_flagged": True}, machine_id=machine_id)
                         skipped_count += 1
                         CURRENT_JOB["skipped_count"] = skipped_count
                         break
