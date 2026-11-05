@@ -625,6 +625,9 @@ function renderAccounts(accounts) {
         const spamBadge = isSpam
             ? `<span class="px-1.5 py-0.5 rounded text-[10px] font-bold bg-red-500/20 text-red-400 border border-red-500/40 animate-pulse">⚠️ Spam</span>`
             : "";
+        const needsAuthBadge = (!acc.session_string)
+            ? `<button onclick="openAddAccountModal(); const pi=document.getElementById('inputPhoneNumber'); if(pi) pi.value='${acc.phone_number}';" title="Session needs authorization on cloud. Click to re-login." class="px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30 hover:bg-amber-500/40 cursor-pointer">🔑 Re-login</button>`
+            : "";
 
         const fullName = `${acc.first_name || ""} ${acc.last_name || ""}`.trim() || acc.username || acc.phone_number;
         const userTag  = acc.username ? `<span class="text-gray-400 text-xs">@${acc.username}</span>` : "";
@@ -657,6 +660,7 @@ function renderAccounts(accounts) {
                             <span class="text-xs font-semibold text-white truncate">${fullName}</span>
                             ${premBadge}
                             ${spamBadge}
+                            ${needsAuthBadge}
                         </div>
                         <div class="flex items-center gap-2 text-[11px] text-gray-400">
                             <span class="font-mono">${acc.phone_number}</span>
@@ -1380,7 +1384,10 @@ async function fetchSourceMembers() {
         const res = await fetch(`${API_BASE}/api/members/scrape`, {
             method: "POST",
             headers: getAuthHeaders(),
-            body: JSON.stringify({ source_group: sourceGroup })
+            body: JSON.stringify({
+                source_group: sourceGroup,
+                accounts_override: currentAccounts
+            })
         });
         const data = await res.json();
 
@@ -1500,7 +1507,8 @@ async function startAddingMembers() {
                 target_group: targetGroup,
                 members,
                 delay,
-                max_per_account: maxPerAcc
+                max_per_account: maxPerAcc,
+                accounts_override: currentAccounts
             })
         });
         const data = await res.json();

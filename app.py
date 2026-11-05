@@ -133,12 +133,14 @@ class ToggleAccountRequest(BaseModel):
 class ScrapeRequest(BaseModel):
     source_group: str
     account_phone: Optional[str] = None
+    accounts_override: Optional[List[Dict[str, Any]]] = None
 
 class StartAddRequest(BaseModel):
     target_group: str
     members: List[str]
     delay: float = 3.0
     max_per_account: int = 30
+    accounts_override: Optional[List[Dict[str, Any]]] = None
 
 
 # ==========================================
@@ -407,6 +409,10 @@ async def scrape_members(req: ScrapeRequest, license: Dict[str, Any] = Depends(r
     mid = license.get("machine_id")
     if not req.source_group.strip():
         raise HTTPException(status_code=400, detail="Source group link or username is required.")
+    if req.accounts_override and isinstance(req.accounts_override, list):
+        for acc in req.accounts_override:
+            if isinstance(acc, dict) and acc.get("phone_number"):
+                telegram_engine.add_or_update_account(acc, machine_id=mid)
     ok, msg, data = await telegram_engine.fetch_group_members(req.source_group, req.account_phone, machine_id=mid)
     if not ok:
         raise HTTPException(status_code=400, detail=msg)
@@ -425,6 +431,11 @@ async def start_add_members(req: StartAddRequest, license: Dict[str, Any] = Depe
     clean_members = [m.strip() for m in req.members if m.strip()]
     if not clean_members:
         raise HTTPException(status_code=400, detail="Member list cannot be empty.")
+
+    if req.accounts_override and isinstance(req.accounts_override, list):
+        for acc in req.accounts_override:
+            if isinstance(acc, dict) and acc.get("phone_number"):
+                telegram_engine.add_or_update_account(acc, machine_id=mid)
 
     # Start background task with live event streaming
     asyncio.create_task(

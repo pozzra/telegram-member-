@@ -14,6 +14,7 @@ from typing import List, Dict, Any, Optional, Callable
 
 import qrcode
 from telethon import TelegramClient
+from telethon.sessions import StringSession
 from telethon.errors import (
     ApiIdInvalidError,
     AuthKeyInvalidError,
@@ -267,6 +268,28 @@ def get_session_path(phone: str, machine_id: Optional[str] = None) -> str:
     return str(SESSIONS_DIR / safe_phone)
 
 
+def get_client_session(acc: Dict[str, Any], phone: str, machine_id: Optional[str] = None):
+    """Return a Telethon session instance or path.
+    Prefers StringSession for serverless/cloud hosting resilience (Vercel, Render),
+    falling back to SQLite file session path.
+    """
+    sess_str = (acc.get("session_string") or acc.get("session") or "").strip()
+    if sess_str and len(sess_str) > 20:
+        return StringSession(sess_str)
+
+    # Check partitioned session file
+    file_path = get_session_path(phone, machine_id)
+    if Path(file_path + ".session").exists():
+        return file_path
+
+    # Check unpartitioned sessions dir
+    unpart_path = str(SESSIONS_DIR / re.sub(r"[^\w]", "_", normalize_phone(phone)))
+    if Path(unpart_path + ".session").exists():
+        return unpart_path
+
+    return file_path
+
+
 def load_accounts(machine_id: Optional[str] = None) -> List[Dict[str, Any]]:
     acc_file = get_accounts_file(machine_id)
     if not acc_file.exists():
@@ -359,8 +382,8 @@ def _extract_login_code(raw_code: str) -> str:
     return compact
 
 
-def _account_from_user(me: Any, api_id: int, api_hash: str, phone: str) -> Dict[str, Any]:
-    return {
+def _account_from_user(me: Any, api_id: int, api_hash: str, phone: str, session_string: str = "") -> Dict[str, Any]:
+    acc = {
         "api_id": api_id,
         "api_hash": api_hash,
         "phone_number": phone,
@@ -371,6 +394,9 @@ def _account_from_user(me: Any, api_id: int, api_hash: str, phone: str) -> Dict[
         "is_premium": bool(getattr(me, "premium", False)),
         "enabled": True,
     }
+    if session_string:
+        acc["session_string"] = session_string
+    return acc
 
 
 async def request_telegram_code(phone: str, api_id: int, api_hash: str, machine_id: Optional[str] = None):
@@ -396,7 +422,12 @@ async def request_telegram_code(phone: str, api_id: int, api_hash: str, machine_
             if await client.is_user_authorized():
                 me = await client.get_me()
                 if me:
-                    acc = _account_from_user(me, api_id, api_hash, norm)
+                    sess_str = ""
+                    try:
+                        sess_str = StringSession.save(client.session)
+                    except Exception:
+                        pass
+                    acc = _account_from_user(me, api_id, api_hash, norm, sess_str)
                     add_or_update_account(acc, machine_id)
                     return True, "Account is already authorized and connected!", {
                         "already_authorized": True,
@@ -572,7 +603,13 @@ async def verify_telegram_code(
                     "can_resend": True,
                 }
 
-            account_entry = _account_from_user(me, pending_api_id, pending_api_hash, norm)
+            sess_str = ""
+            try:
+                sess_str = StringSession.save(client.session)
+            except Exception:
+                pass
+
+            account_entry = _account_from_user(me, pending_api_id, pending_api_hash, norm, sess_str)
             add_or_update_account(account_entry, eff_machine_id)
             await _drop_pending_login(norm)
             return True, f"Successfully signed in as {me.first_name or ''} (@{me.username or me.id})!", {
@@ -719,13 +756,19 @@ async def _watch_qr_login(qr_id: str):
         user = await qr.wait()
         phone = normalize_phone(user.phone) if getattr(user, "phone", None) else f"+{user.id}"
 
+        sess_str = ""
+        try:
+            sess_str = StringSession.save(client.session)
+        except Exception:
+            pass
+
         # Disconnect first so Windows releases the SQLite session file, then
         # move the temporary session into the permanent account slot.
         await _disconnect_client(client)
         _move_qr_session(entry, phone)
         entry["temp_session"] = None
 
-        account_entry = _account_from_user(user, int(entry["api_id"]), entry["api_hash"], phone)
+        account_entry = _account_from_user(user, int(entry["api_id"]), entry["api_hash"], phone, sess_str)
         add_or_update_account(account_entry, entry.get("machine_id"))
 
         entry["status"] = "success"
@@ -781,11 +824,16 @@ async def submit_qr_2fa(qr_id: str, password: str, machine_id: Optional[str] = N
             return False, "Telegram did not return the account profile. Please refresh the QR code and try again.", None
 
         phone = normalize_phone(me.phone) if getattr(me, "phone", None) else f"+{me.id}"
+        sess_str = ""
+        try:
+            sess_str = StringSession.save(client.session)
+        except Exception:
+            pass
         await _disconnect_client(client)
         _move_qr_session(entry, phone)
         entry["temp_session"] = None
 
-        account_entry = _account_from_user(me, int(entry["api_id"]), entry["api_hash"], phone)
+        account_entry = _account_from_user(me, int(entry["api_id"]), entry["api_hash"], phone, sess_str)
         add_or_update_account(account_entry, entry.get("machine_id"))
 
         entry["status"] = "success"
@@ -890,14 +938,23 @@ async def fetch_group_members(source_group_link: str, account_phone: Optional[st
     phone = chosen_acc["phone_number"]
     api_id = int(chosen_acc["api_id"])
     api_hash = chosen_acc["api_hash"]
-    session_path = get_session_path(phone, machine_id)
+    session_obj = get_client_session(chosen_acc, phone, machine_id)
 
-    client = TelegramClient(session_path, api_id, api_hash)
+    client = TelegramClient(session_obj, api_id, api_hash)
     await client.connect()
 
     if not await client.is_user_authorized():
         await client.disconnect()
         return False, f"Account {phone} is not authorized. Please re-login.", None
+
+    if not chosen_acc.get("session_string"):
+        try:
+            sess_str = StringSession.save(client.session)
+            if sess_str:
+                chosen_acc["session_string"] = sess_str
+                add_or_update_account(chosen_acc, machine_id)
+        except Exception:
+            pass
 
     try:
         target = await resolve_group_entity(client, source_group_link)
@@ -1057,14 +1114,23 @@ async def run_adding_flow(
         phone = acc["phone_number"]
         api_id = int(acc["api_id"])
         api_hash = acc["api_hash"]
-        session_path = get_session_path(phone, machine_id)
+        session_obj = get_client_session(acc, phone, machine_id)
         try:
-            client = TelegramClient(session_path, api_id, api_hash)
+            client = TelegramClient(session_obj, api_id, api_hash)
             await client.connect()
             if not await client.is_user_authorized():
                 log(f"Account {phone} is not authorized; skipping.", "warning")
                 await client.disconnect()
                 continue
+
+            if not acc.get("session_string"):
+                try:
+                    sess_str = StringSession.save(client.session)
+                    if sess_str:
+                        acc["session_string"] = sess_str
+                        add_or_update_account(acc, machine_id)
+                except Exception:
+                    pass
 
             me = await client.get_me()
             is_premium = bool(getattr(me, "premium", False))
