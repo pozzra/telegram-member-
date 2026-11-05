@@ -747,6 +747,12 @@ async function deleteAccount(phone) {
 async function clearSpam(phone) {
     // Clear spam_flagged flag on an account
     try {
+        const acc = currentAccounts.find(a => a.phone_number === phone);
+        if (acc) {
+            acc.spam_flagged = false;
+            saveAccountsToLocalStorage(currentAccounts);
+            renderAccounts(currentAccounts);
+        }
         await fetch(`${API_BASE}/api/accounts/clear-spam`, {
             method: "POST",
             headers: getAuthHeaders(),
@@ -1645,7 +1651,7 @@ async function startAddingMembers() {
         // Standard accounts: invites_done < maxPerAcc
         const availableWorkers = activeAccounts.filter(a => {
             const b = breakdown[a.phone_number];
-            return b && b.status === "ready" && (a.is_premium || b.invites_done < maxPerAcc);
+            return !a.spam_flagged && !a.needs_reauth && b && b.status === "ready" && (a.is_premium || b.invites_done < maxPerAcc);
         });
 
         if (availableWorkers.length === 0) {
@@ -1681,13 +1687,29 @@ async function startAddingMembers() {
                 addedCount++;
                 breakdown[phone].invites_done++;
                 logConsole(data.message, "success");
-            } else if (data.status === "peer_flood") {
+            } else if (data.status === "peer_flood" || data.status === "flood_wait") {
                 skippedCount++;
                 breakdown[phone].status = "limited";
-                logConsole(`⚠️ Account ${phone} hit Spam/PeerFlood limit. Switching worker.`, "warning");
                 worker.spam_flagged = true;
+                const secs = data.seconds || 0;
+                const waitLabel = secs > 60 ? `${Math.ceil(secs / 60)}m (${secs}s)` : `${secs}s`;
+                logConsole(`⚠️ Account ${phone} hit Telegram Flood limit (${waitLabel}). Pausing worker.`, "warning");
                 saveAccountsToLocalStorage(currentAccounts);
                 renderAccounts(currentAccounts);
+
+                // Check if any available workers remain
+                const remainingWorkers = activeAccounts.filter(a => {
+                    const b = breakdown[a.phone_number];
+                    return !a.spam_flagged && !a.needs_reauth && b && b.status === "ready" && (a.is_premium || b.invites_done < maxPerAcc);
+                });
+                if (remainingWorkers.length === 0) {
+                    const stopMsg = currentLanguage === "km"
+                        ? `⚠️ គណនី Telegram ទាំងអស់បានជាប់ Flood Wait របស់ Telegram (${waitLabel})។ ប្រព័ន្ធបានផ្អាកដោយស្វ័យប្រវត្តិដើម្បីការពារគណនីរបស់អ្នក។`
+                        : `⚠️ All accounts hit Telegram Flood Wait (${waitLabel}). Adder stopped automatically to protect your Telegram account.`;
+                    logConsole(stopMsg, "error");
+                    alert(stopMsg);
+                    break;
+                }
             } else if (data.status === "unauthorized") {
                 skippedCount++;
                 breakdown[phone].status = "unauthorized";

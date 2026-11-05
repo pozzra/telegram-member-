@@ -1,9 +1,13 @@
 import os
 import sys
+import time
+import threading
 import subprocess
 import uvicorn
 
-def launch_bot_if_configured():
+DEFAULT_BOT_TOKEN = "9039008476:AAFWUTnldWvfiC9CYYTquNEj5SV7GRtlGiI"
+
+def get_bot_token() -> str:
     token = os.environ.get("BOT_TOKEN", "").strip()
     if not token:
         env_file = os.path.join(os.path.dirname(__file__), ".env")
@@ -16,15 +20,34 @@ def launch_bot_if_configured():
                             break
             except Exception:
                 pass
+    return token or DEFAULT_BOT_TOKEN
 
-    if token:
-        bot_file = os.path.join(os.path.dirname(__file__), "bot.py")
-        if os.path.exists(bot_file):
-            print(f"[INFO] Starting Telegram License Bot in background with token {token[:10]}...")
-            try:
-                subprocess.Popen([sys.executable, bot_file])
-            except Exception as e:
-                print(f"[WARN] Failed to start bot: {e}")
+def bot_supervisor_worker():
+    """Supervisor thread: keeps Telegram bot running 24/7. Auto-restarts if it ever exits."""
+    token = get_bot_token()
+    bot_file = os.path.join(os.path.dirname(__file__), "bot.py")
+    if not os.path.exists(bot_file):
+        print("[SUPERVISOR] bot.py not found, skipping bot supervisor.")
+        return
+
+    env = os.environ.copy()
+    env["BOT_TOKEN"] = token
+    env["ADMIN_CHAT_ID"] = os.environ.get("ADMIN_CHAT_ID", "1208908312")
+    env["ADMIN_USERNAME"] = os.environ.get("ADMIN_USERNAME", "kun_amra")
+
+    print(f"[SUPERVISOR] Bot supervisor active for token {token[:10]}... (auto-restart enabled)")
+    while True:
+        try:
+            proc = subprocess.Popen([sys.executable, bot_file], env=env)
+            proc.wait()
+            print(f"[SUPERVISOR] Bot process exited with code {proc.returncode}. Auto-restarting in 3 seconds...")
+        except Exception as e:
+            print(f"[SUPERVISOR] Error launching bot process: {e}. Retrying in 5 seconds...")
+        time.sleep(3)
+
+def launch_bot_supervisor():
+    t = threading.Thread(target=bot_supervisor_worker, daemon=True, name="BotSupervisor")
+    t.start()
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8000))
@@ -36,8 +59,8 @@ if __name__ == "__main__":
     print(f"  Network URL: http://0.0.0.0:{port}")
     print("=" * 60)
 
-    # Automatically launch bot in background if BOT_TOKEN is present
-    launch_bot_if_configured()
+    # Automatically launch resilient bot supervisor in background
+    launch_bot_supervisor()
 
     uvicorn.run("app:app", host=host, port=port, reload=False)
 

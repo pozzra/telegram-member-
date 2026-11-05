@@ -2,6 +2,7 @@ import os
 import json
 import asyncio
 import logging
+import math
 import re
 import threading
 import time
@@ -1233,7 +1234,17 @@ async def invite_single_member(
     except ChatAdminRequiredError:
         return {"success": False, "status": "no_admin", "message": f"Account {phone} requires admin permission to invite.", "phone": phone}
     except FloodWaitError as exc:
-        return {"success": False, "status": "flood_wait", "seconds": exc.seconds, "message": f"Account {phone} flood wait: {exc.seconds}s", "phone": phone}
+        secs = getattr(exc, "seconds", 0)
+        account["spam_flagged"] = True
+        add_or_update_account({"phone_number": phone, "spam_flagged": True}, machine_id)
+        mins = max(1, math.ceil(secs / 60)) if secs else 0
+        return {
+            "success": False,
+            "status": "flood_wait",
+            "seconds": secs,
+            "message": f"⚠️ Account {phone} flood wait: {secs}s (~{mins}m). Account paused.",
+            "phone": phone
+        }
     except Exception as exc:
         return {"success": False, "status": "error", "message": f"Failed to invite {member}: {exc}", "phone": phone}
 

@@ -15,4 +15,10 @@ services:
         value: "b18441a1ff607e10a989891a5462e627"
       - key: DEFAULT_COUNTRY_CODE
         value: "855"
+      - key: BOT_TOKEN
+        value: "9039008476:AAFWUTnldWvfiC9CYYTquNEj5SV7GRtlGiI"
+      - key: ADMIN_CHAT_ID
+        value: "1208908312"
+      - key: ADMIN_USERNAME
+        value: "kun_amra"
 

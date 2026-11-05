@@ -58,6 +58,10 @@ def acquire_single_instance_lock(port: int = 29876) -> bool:
     global _bot_lock_socket
     try:
         _bot_lock_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        try:
+            _bot_lock_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        except Exception:
+            pass
         _bot_lock_socket.bind(("127.0.0.1", port))
         _bot_lock_socket.listen(1)
         return True
@@ -87,9 +91,13 @@ logging.basicConfig(
 )
 log = logging.getLogger("LicenseBot")
 
-# ─── Config ───────────────────────────────────────────────
-BOT_TOKEN = os.environ.get("BOT_TOKEN", "").strip()
-ADMIN_USERNAME = "kun_amra"
+# ─── Config & Defaults (Resilient fallback for Render/Cloud) ─
+DEFAULT_BOT_TOKEN = "9039008476:AAFWUTnldWvfiC9CYYTquNEj5SV7GRtlGiI"
+DEFAULT_ADMIN_CHAT_ID = "1208908312"
+DEFAULT_ADMIN_USERNAME = "kun_amra"
+
+BOT_TOKEN = os.environ.get("BOT_TOKEN", "").strip() or DEFAULT_BOT_TOKEN
+ADMIN_USERNAME = os.environ.get("ADMIN_USERNAME", "").strip() or DEFAULT_ADMIN_USERNAME
 
 DATA_DIR = ROOT_DIR / "data"
 DATA_DIR.mkdir(parents=True, exist_ok=True)
@@ -117,7 +125,7 @@ def load_bot_data() -> dict:
             return json.loads(BOT_DATA_FILE.read_text(encoding="utf-8"))
         except Exception:
             pass
-    return {"admin_chat_id": os.environ.get("ADMIN_CHAT_ID", "").strip(), "pending": {}}
+    return {"admin_chat_id": os.environ.get("ADMIN_CHAT_ID", "").strip() or DEFAULT_ADMIN_CHAT_ID, "pending": {}}
 
 
 def save_bot_data(data: dict):
@@ -131,9 +139,14 @@ bot_state = load_bot_data()
 # ─── Telegram API helpers ─────────────────────────────────
 async def tg(client: httpx.AsyncClient, method: str, **params):
     """POST to Telegram Bot API."""
+    # Long-polling getUpdates waits up to 25s; HTTP socket timeout must be larger
+    timeout_sec = 45.0 if method == "getUpdates" else 20.0
     try:
-        resp = await client.post(f"{API_BASE}/{method}", json=params, timeout=20)
+        resp = await client.post(f"{API_BASE}/{method}", json=params, timeout=timeout_sec)
         return resp.json()
+    except (httpx.ReadTimeout, httpx.WriteTimeout, httpx.ConnectTimeout):
+        # Normal long-polling idle timeout when no new updates arrived
+        return {"ok": True, "result": []}
     except Exception as exc:
         log.error(f"tg.{method} error: {exc}")
         return {"ok": False, "description": str(exc)}
@@ -1054,8 +1067,6 @@ async def run_bot():
     if not BOT_TOKEN:
         log.error("=" * 55)
         log.error("BOT_TOKEN is not set!")
-        log.error("Create a .env file with: BOT_TOKEN=your_token_here")
-        log.error("Or set the BOT_TOKEN environment variable.")
         log.error("=" * 55)
         return
 
@@ -1065,13 +1076,20 @@ async def run_bot():
 
     offset = 0
     async with httpx.AsyncClient(timeout=35) as client:
-        # Verify token
-        me_resp = await tg(client, "getMe")
-        if not me_resp.get("ok"):
-            log.error(f"Invalid bot token: {me_resp.get('description')}")
-            return
+        # Verify token with auto-retry (survives network boot latency)
+        bot_username = "unknown"
+        while True:
+            try:
+                me_resp = await tg(client, "getMe")
+                if me_resp.get("ok"):
+                    bot_username = me_resp["result"]["username"]
+                    break
+                log.warning(f"Telegram API check: {me_resp.get('description')}. Retrying in 5s...")
+                await asyncio.sleep(5)
+            except Exception as e:
+                log.warning(f"Network error connecting to Telegram: {e}. Retrying in 5s...")
+                await asyncio.sleep(5)
 
-        bot_username = me_resp["result"]["username"]
         log.info(f"Bot connected: @{bot_username}")
         log.info(f"Admin registered: {bool(bot_state.get('admin_chat_id'))}")
         log.info(f"Pending requests: {len(bot_state.get('pending', {}))}")
@@ -1084,17 +1102,25 @@ async def run_bot():
                                 offset=offset, timeout=25,
                                 allowed_updates=["message", "callback_query"])
                 if not resp.get("ok"):
-                    await asyncio.sleep(3)
+                    desc = resp.get("description", "")
+                    if "conflict" in desc.casefold():
+                        log.warning("Telegram 409 Conflict: another instance running. Waiting 10s...")
+                        await asyncio.sleep(10)
+                    else:
+                        await asyncio.sleep(3)
                     continue
 
                 for upd in resp.get("result", []):
                     offset = upd["update_id"] + 1
-                    await process_update(client, upd)
+                    try:
+                        await process_update(client, upd)
+                    except Exception as err:
+                        log.error(f"Error handling update: {err}", exc_info=True)
 
             except asyncio.CancelledError:
                 break
             except Exception as exc:
-                log.error(f"Polling error: {exc}")
+                log.error(f"Polling connection error: {exc}. Retrying in 5s...")
                 await asyncio.sleep(5)
 
 
@@ -1105,8 +1131,15 @@ if __name__ == "__main__":
         sys.exit(0)
 
     license_manager.init_db()
-    try:
-        asyncio.run(run_bot())
-    except KeyboardInterrupt:
-        log.info("Bot stopped gracefully.")
+
+    # Resilient auto-restart loop: bot NEVER auto-downs
+    while True:
+        try:
+            asyncio.run(run_bot())
+        except KeyboardInterrupt:
+            log.info("Bot stopped by user.")
+            break
+        except Exception as exc:
+            log.error(f"Fatal bot crash: {exc}. Auto-restarting in 5s...", exc_info=True)
+            time.sleep(5)
 

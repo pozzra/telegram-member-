@@ -2,22 +2,16 @@
 title Telegram License Bot - @kun_amra
 echo.
 echo ============================================================
-echo   TELEGRAM ADDER PRO - LICENSE BOT
+echo   TELEGRAM ADDER PRO - LICENSE BOT (AUTO-RESTARTING)
 echo   Admin: @kun_amra
 echo ============================================================
 echo.
 
-REM Check if .env exists
-if not exist ".env" (
-    echo [!] .env file not found!
-    echo     Copy .env.example to .env and add your BOT_TOKEN
-    echo.
-    pause
-    exit /b 1
-)
-
+:loop
 echo Starting bot...
 python bot.py
 echo.
-pause
+echo [!] Bot process ended. Auto-restarting in 3 seconds... (Ctrl+C to stop)
+timeout /t 3 >nul
+goto loop
 

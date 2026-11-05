@@ -2,6 +2,7 @@ import os
 import json
 import asyncio
 import psutil
+import httpx
 from typing import Optional, List, Dict, Any
 from pathlib import Path
 
@@ -514,11 +515,32 @@ async def get_job_status(license: Dict[str, Any] = Depends(require_active_licens
 
 
 # ==========================================
-# Health Check (useful for Vercel uptime monitors)
+# Health Check & Keep-Alive (Prevents Render Free sleep)
 # ==========================================
 @app.get("/api/health")
 async def health_check():
     return {"status": "ok", "vercel": IS_VERCEL}
+
+
+async def render_keep_alive_task():
+    """Keeps Render cloud server awake 24/7 by self-pinging every 9 minutes."""
+    render_url = os.environ.get("RENDER_EXTERNAL_URL", "").strip()
+    if not render_url:
+        return
+    ping_url = f"{render_url.rstrip('/')}/api/health"
+    await asyncio.sleep(60)
+    async with httpx.AsyncClient(timeout=20) as client:
+        while True:
+            try:
+                await client.get(ping_url)
+            except Exception:
+                pass
+            await asyncio.sleep(540)  # Ping every 9 minutes
+
+
+@app.on_event("startup")
+async def on_app_startup():
+    asyncio.create_task(render_keep_alive_task())
 
 
 # ==========================================
