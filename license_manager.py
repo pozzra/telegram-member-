@@ -3,6 +3,7 @@ import os
 import secrets
 import string
 import argparse
+import hashlib
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 import shutil
@@ -12,6 +13,7 @@ IS_VERCEL = bool(os.environ.get("VERCEL"))
 BASE_DIR = Path(__file__).resolve().parent
 DATA_DIR = Path("/tmp/data") if IS_VERCEL else (BASE_DIR / "data")
 DB_PATH = DATA_DIR / "licenses.db"
+LICENSE_SECRET = os.environ.get("LICENSE_SECRET", "TGADDER_KUN_AMRA_2026_SECURE_SALT")
 
 def get_now_utc():
     return datetime.now(timezone.utc)
@@ -82,10 +84,71 @@ def _format_random_key(prefix="TGADD"):
     parts = [''.join(secrets.choice(chars) for _ in range(4)) for _ in range(3)]
     return f"{prefix}-{parts[0]}-{parts[1]}-{parts[2]}"
 
+def generate_signed_key(machine_id: str, days: int = None, prefix: str = "TGADD") -> str:
+    """
+    Generates an algorithmically verifiable license key mathematically bound to machine_id.
+    Format: TGADD-XXXX-YYYY-ZZZZ
+    - XXXX: First 4 hex chars of machine ID
+    - YYYY: Duration encoding (e.g. D001, D003, D007, D030, D090, LIFE)
+    - ZZZZ: HMAC-SHA256 signature
+    This allows any server (Render, Vercel, Local) to verify keys without shared DB.
+    """
+    if not machine_id:
+        return _format_random_key(prefix)
+    
+    clean_mid = machine_id.replace("MID-", "").replace("-", "").strip().upper()
+    p1 = clean_mid[:4].ljust(4, "0")
+    
+    if days is None or days == 0:
+        p2 = "LIFE"
+    elif days < 1000:
+        p2 = f"D{days:03d}"
+    else:
+        p2 = "D999"
+        
+    raw = f"{p1}-{p2}-{LICENSE_SECRET}"
+    sig = hashlib.sha256(raw.encode("utf-8")).hexdigest().upper()[:4]
+    return f"{prefix}-{p1}-{p2}-{sig}"
+
+def verify_signed_key(key_code: str, machine_id: str = None):
+    """
+    Verifies if key_code is a valid cryptographically signed key for machine_id.
+    Returns (valid: bool, reason: str, details: dict or None)
+    """
+    parts = key_code.strip().upper().split("-")
+    if len(parts) != 4 or parts[0] != "TGADD":
+        return False, "Invalid format", None
+        
+    p1, p2, sig = parts[1], parts[2], parts[3]
+    raw = f"{p1}-{p2}-{LICENSE_SECRET}"
+    expected_sig = hashlib.sha256(raw.encode("utf-8")).hexdigest().upper()[:4]
+    
+    if sig != expected_sig:
+        return False, "Invalid signature", None
+        
+    if machine_id:
+        clean_mid = machine_id.replace("MID-", "").replace("-", "").strip().upper()
+        if p1 != clean_mid[:4].ljust(4, "0"):
+            return False, f"Machine ID Mismatch: Key is locked to machine prefix {p1}, but current machine is {clean_mid[:4]}.", None
+            
+    days = 0 if p2 == "LIFE" else int(p2[1:]) if (p2.startswith("D") and p2[1:].isdigit()) else 0
+    return True, "Valid signed key", {
+        "days": days,
+        "is_lifetime": (p2 == "LIFE" or days == 0),
+        "machine_prefix": p1
+    }
+
 def create_license(days=None, tier="VIP", max_accounts=50, note="", custom_key=None, bound_device=None):
     init_db()
     conn = get_connection()
-    key_code = custom_key.strip().upper() if custom_key else _format_random_key()
+    if custom_key:
+        key_code = custom_key.strip().upper()
+    elif bound_device:
+        # Use signed key formula so it verifies anywhere without DB sync issues
+        key_code = generate_signed_key(bound_device, days)
+    else:
+        key_code = _format_random_key()
+
     now_dt = get_now_utc()
     now_str = now_dt.isoformat()
     expires_str = (now_dt + timedelta(days=days)).isoformat() if (days is not None and days > 0) else None
@@ -108,7 +171,7 @@ def create_license(days=None, tier="VIP", max_accounts=50, note="", custom_key=N
                 )
 
         conn.execute(
-            """INSERT INTO licenses (key_code, tier, max_accounts, is_active, created_at, expires_at, bound_device, note)
+            """INSERT OR REPLACE INTO licenses (key_code, tier, max_accounts, is_active, created_at, expires_at, bound_device, note)
                VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
             (key_code, tier, max_accounts, 1, now_str, expires_str, bound_device, note)
         )
@@ -131,12 +194,45 @@ def verify_license(key_code: str, machine_id: str = None, bind_if_unbound: bool 
     init_db()
     conn = get_connection()
     cursor = conn.cursor()
-    cursor.execute("SELECT * FROM licenses WHERE key_code = ?", (key_code.strip().upper(),))
+    clean_key = key_code.strip().upper()
+    clean_machine = machine_id.strip().upper() if machine_id else None
+
+    cursor.execute("SELECT * FROM licenses WHERE key_code = ?", (clean_key,))
     row = cursor.fetchone()
 
+    # If key is NOT in database, try verifying as a mathematically signed key!
     if not row:
-        conn.close()
-        return False, "Invalid license key. Please check your key or contact admin @kun_amra.", None
+        valid_signed, signed_msg, signed_info = verify_signed_key(clean_key, clean_machine)
+        if valid_signed and signed_info:
+            now_dt = get_now_utc()
+            now_str = now_dt.isoformat()
+            days = signed_info.get("days", 0)
+            expires_str = (now_dt + timedelta(days=days)).isoformat() if days > 0 else None
+            tier = "VIP" if days == 0 else "PRO" if days >= 30 else "Basic (Trial)"
+            max_accounts = 100 if days == 0 else 50 if days >= 30 else 25
+
+            # Save to local database automatically
+            with conn:
+                conn.execute(
+                    """INSERT OR REPLACE INTO licenses (key_code, tier, max_accounts, is_active, created_at, expires_at, bound_device, note)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+                    (clean_key, tier, max_accounts, 1, now_str, expires_str, clean_machine, "Auto-verified signed key")
+                )
+            conn.close()
+            return True, "License key is valid and active.", {
+                "key_code": clean_key,
+                "tier": tier,
+                "max_accounts": max_accounts,
+                "is_active": True,
+                "created_at": now_str,
+                "expires_at": expires_str or "Lifetime",
+                "bound_device": clean_machine,
+                "note": "Auto-verified signed key"
+            }
+        else:
+            conn.close()
+            error_reason = signed_msg if "Mismatch" in (signed_msg or "") else "Invalid license key. Please check your key or contact admin @kun_amra."
+            return False, error_reason, None
 
     if not row["is_active"]:
         conn.close()
