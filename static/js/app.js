@@ -1482,9 +1482,26 @@ function startJobStatusFallbackPoller() {
             if (res.ok) {
                 const data = await res.json();
                 if (data && data.job) {
-                    handleWsMessage({ type: "progress", data: data.job });
-                    if (!data.job.is_running && isJobRunning) {
-                        handleWsMessage({ type: "finished", data: data.job });
+                    const job = data.job;
+                    // Normalize REST field names → WS field names
+                    handleWsMessage({
+                        type: "progress",
+                        progress: job.progress || 0,
+                        status: job.status_message || "",
+                        added: job.added_count || 0,
+                        skipped: job.skipped_count || 0,
+                        total: job.total_count || 0,
+                    });
+                    if (!job.is_running && isJobRunning) {
+                        isJobRunning = false;
+                        clearInterval(jobStatusPoller);
+                        jobStatusPoller = null;
+                        handleWsMessage({
+                            type: "finished",
+                            added: job.added_count || 0,
+                            skipped: job.skipped_count || 0,
+                            breakdown: job.worker_breakdown || {},
+                        });
                     }
                 }
             }
@@ -1500,12 +1517,12 @@ function handleWsMessage(msg) {
     }
 
     if (msg.type === "progress") {
-        document.getElementById("jobProgressPercent").innerText = `${msg.progress}%`;
-        document.getElementById("jobProgressBar").style.width = `${msg.progress}%`;
-        document.getElementById("jobStatusText").innerText = msg.status;
-        document.getElementById("statAdded").innerText = msg.added;
-        document.getElementById("statSkipped").innerText = msg.skipped;
-        document.getElementById("statTotal").innerText = msg.total;
+        document.getElementById("jobProgressPercent").innerText = `${msg.progress ?? 0}%`;
+        document.getElementById("jobProgressBar").style.width = `${msg.progress ?? 0}%`;
+        document.getElementById("jobStatusText").innerText = msg.status || "";
+        document.getElementById("statAdded").innerText = msg.added ?? 0;
+        document.getElementById("statSkipped").innerText = msg.skipped ?? 0;
+        document.getElementById("statTotal").innerText = msg.total ?? 0;
     }
 
     if (msg.type === "finished") {
@@ -1515,7 +1532,10 @@ function handleWsMessage(msg) {
         document.getElementById("jobProgressPercent").innerText = "100%";
         document.getElementById("jobProgressBar").style.width = "100%";
 
-        openSummaryModal(msg.added, msg.skipped, msg.breakdown);
+        const added = msg.added ?? 0;
+        const skipped = msg.skipped ?? 0;
+        const breakdown = msg.breakdown || {};
+        openSummaryModal(added, skipped, breakdown);
     }
 
     if (msg.type === "init" && msg.job) {
@@ -1524,12 +1544,12 @@ function handleWsMessage(msg) {
             isJobRunning = true;
             document.getElementById("btnStartAdd").disabled = true;
             document.getElementById("btnStopAdd").disabled = false;
-            document.getElementById("jobProgressPercent").innerText = `${job.progress}%`;
-            document.getElementById("jobProgressBar").style.width = `${job.progress}%`;
-            document.getElementById("jobStatusText").innerText = job.status_message;
-            document.getElementById("statAdded").innerText = job.added_count;
-            document.getElementById("statSkipped").innerText = job.skipped_count;
-            document.getElementById("statTotal").innerText = job.total_count;
+            document.getElementById("jobProgressPercent").innerText = `${job.progress ?? 0}%`;
+            document.getElementById("jobProgressBar").style.width = `${job.progress ?? 0}%`;
+            document.getElementById("jobStatusText").innerText = job.status_message || "";
+            document.getElementById("statAdded").innerText = job.added_count ?? 0;
+            document.getElementById("statSkipped").innerText = job.skipped_count ?? 0;
+            document.getElementById("statTotal").innerText = job.total_count ?? 0;
         }
     }
 }

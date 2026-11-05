@@ -602,40 +602,255 @@ async def on_genkey_cmd(client, msg: dict):
     await send(client, chat_id, result)
 
 
-async def on_listkeys_cmd(client, msg: dict):
-    chat_id = str(msg["chat"]["id"])
-    if chat_id != bot_state.get("admin_chat_id"):
-        await send(client, chat_id, "❌ Admin only.")
-        return
-
+async def _send_listkeys_page(client, chat_id: str, page: int = 0):
+    """Send a page of license keys with inline Revoke/Delete buttons."""
     keys = license_manager.list_licenses()
     if not keys:
         await send(client, chat_id, "📭 No license keys in database.")
         return
 
-    lines = ["<b>🔑 Recent License Keys (last 10):</b>\n"]
-    for k in keys[:10]:
-        status = "✅" if k["is_active"] else "❌"
-        exp = _fmt_expires(k.get("expires_at") or "")
-        lines.append(f"{status} <code>{k['key_code']}</code>\n   Tier: {k['tier']} | {exp}")
+    PAGE = 5
+    total = len(keys)
+    total_pages = max(1, (total + PAGE - 1) // PAGE)
+    page = max(0, min(page, total_pages - 1))
+    slice_ = keys[page * PAGE: page * PAGE + PAGE]
 
-    await send(client, chat_id, "\n".join(lines))
+    lines = [f"🔑 <b>License Keys</b> (page {page+1}/{total_pages}, total: {total}):\n"]
+    buttons = []
+    for k in slice_:
+        status = "✅" if k["is_active"] else "🔴"
+        exp = _fmt_expires(k.get("expires_at") or "")
+        mid_disp = f"\n   🖥️ <code>{k['bound_device']}</code>" if k.get("bound_device") else ""
+        tier = k.get("tier", "?")
+        lines.append(f"{status} <code>{k['key_code']}</code>\n   {tier} | {exp}{mid_disp}")
+        # One row per key: [🔒 Revoke] or [✅ Already revoked] + [🗑 Delete]
+        row = []
+        if k["is_active"]:
+            row.append({"text": f"🔒 Revoke {k['key_code'][:14]}", "callback_data": f"revoke|{k['key_code']}"})
+        else:
+            row.append({"text": f"↩️ Re-activate {k['key_code'][:10]}", "callback_data": f"reactivate|{k['key_code']}"})
+        row.append({"text": "🗑 Delete", "callback_data": f"delkey|{k['key_code']}"})
+        buttons.append(row)
+
+    # Pagination row
+    nav = []
+    if page > 0:
+        nav.append({"text": "⬅️ Prev", "callback_data": f"lkpage|{page-1}"})
+    if page < total_pages - 1:
+        nav.append({"text": "Next ➡️", "callback_data": f"lkpage|{page+1}"})
+    if nav:
+        buttons.append(nav)
+
+    await send(client, chat_id, "\n".join(lines), markup={"inline_keyboard": buttons})
+
+
+async def on_listkeys_cmd(client, msg: dict):
+    """Command: /listkeys — show all license keys with Revoke/Delete buttons."""
+    chat_id = str(msg["chat"]["id"])
+    if chat_id != bot_state.get("admin_chat_id"):
+        await send(client, chat_id, "❌ Admin only.")
+        return
+    await _send_listkeys_page(client, chat_id, page=0)
 
 
 async def on_revoke_cmd(client, msg: dict):
+    """Command: /revoke [KEY] — revoke a key, or list all keys with Revoke buttons."""
     chat_id = str(msg["chat"]["id"])
     if chat_id != bot_state.get("admin_chat_id"):
         await send(client, chat_id, "❌ Admin only.")
         return
 
     parts = (msg.get("text", "")).split()
+    # No argument → show interactive list
     if len(parts) < 2:
-        await send(client, chat_id, "Usage: /revoke &lt;LICENSE_KEY&gt;")
+        await _send_listkeys_page(client, chat_id, page=0)
         return
 
     key_code = parts[1].strip().upper()
     license_manager.revoke_license(key_code)
-    await send(client, chat_id, f"🔒 License key <code>{key_code}</code> has been revoked.")
+    await send(client, chat_id, f"🔒 License key <code>{key_code}</code> has been <b>revoked</b>.")
+
+
+async def on_revoke_callback(client, cbq: dict, key_code: str):
+    """Inline button: revoke a specific license key."""
+    admin_id = bot_state.get("admin_chat_id", "")
+    user_id = str(cbq["from"]["id"])
+    if user_id != admin_id:
+        await answer_cbq(client, cbq["id"], "❌ Admin only.")
+        return
+
+    license_manager.revoke_license(key_code)
+    await answer_cbq(client, cbq["id"], f"🔒 Revoked {key_code}")
+
+    # Refresh the list in-place
+    msg_id = cbq["message"]["message_id"]
+    page = 0  # refresh page 0 after action; could store page in cbq data if needed
+    keys = license_manager.list_licenses()
+    PAGE = 5
+    total = len(keys)
+    total_pages = max(1, (total + PAGE - 1) // PAGE)
+    slice_ = keys[page * PAGE: page * PAGE + PAGE]
+
+    lines = [f"🔑 <b>License Keys</b> (page {page+1}/{total_pages}, total: {total}):\n"]
+    buttons = []
+    for k in slice_:
+        status = "✅" if k["is_active"] else "🔴"
+        exp = _fmt_expires(k.get("expires_at") or "")
+        mid_disp = f"\n   🖥️ <code>{k['bound_device']}</code>" if k.get("bound_device") else ""
+        tier = k.get("tier", "?")
+        lines.append(f"{status} <code>{k['key_code']}</code>\n   {tier} | {exp}{mid_disp}")
+        row = []
+        if k["is_active"]:
+            row.append({"text": f"🔒 Revoke {k['key_code'][:14]}", "callback_data": f"revoke|{k['key_code']}"})
+        else:
+            row.append({"text": f"↩️ Re-activate {k['key_code'][:10]}", "callback_data": f"reactivate|{k['key_code']}"})
+        row.append({"text": "🗑 Delete", "callback_data": f"delkey|{k['key_code']}"})
+        buttons.append(row)
+    nav = []
+    if page < total_pages - 1:
+        nav.append({"text": "Next ➡️", "callback_data": f"lkpage|{page+1}"})
+    if nav:
+        buttons.append(nav)
+
+    await edit(client, user_id, msg_id, "\n".join(lines), markup={"inline_keyboard": buttons})
+
+
+async def on_reactivate_callback(client, cbq: dict, key_code: str):
+    """Inline button: re-activate a revoked license key."""
+    admin_id = bot_state.get("admin_chat_id", "")
+    user_id = str(cbq["from"]["id"])
+    if user_id != admin_id:
+        await answer_cbq(client, cbq["id"], "❌ Admin only.")
+        return
+
+    import sqlite3 as _sqlite3
+    conn = license_manager.get_connection()
+    with conn:
+        conn.execute("UPDATE licenses SET is_active = 1 WHERE key_code = ?", (key_code.strip(),))
+    conn.close()
+    await answer_cbq(client, cbq["id"], f"✅ Re-activated {key_code}")
+
+    # Refresh list
+    msg_id = cbq["message"]["message_id"]
+    page = 0
+    keys = license_manager.list_licenses()
+    PAGE = 5
+    total = len(keys)
+    total_pages = max(1, (total + PAGE - 1) // PAGE)
+    slice_ = keys[page * PAGE: page * PAGE + PAGE]
+    lines = [f"🔑 <b>License Keys</b> (page {page+1}/{total_pages}, total: {total}):\n"]
+    buttons = []
+    for k in slice_:
+        status = "✅" if k["is_active"] else "🔴"
+        exp = _fmt_expires(k.get("expires_at") or "")
+        mid_disp = f"\n   🖥️ <code>{k['bound_device']}</code>" if k.get("bound_device") else ""
+        tier = k.get("tier", "?")
+        lines.append(f"{status} <code>{k['key_code']}</code>\n   {tier} | {exp}{mid_disp}")
+        row = []
+        if k["is_active"]:
+            row.append({"text": f"🔒 Revoke {k['key_code'][:14]}", "callback_data": f"revoke|{k['key_code']}"})
+        else:
+            row.append({"text": f"↩️ Re-activate {k['key_code'][:10]}", "callback_data": f"reactivate|{k['key_code']}"})
+        row.append({"text": "🗑 Delete", "callback_data": f"delkey|{k['key_code']}"})
+        buttons.append(row)
+    nav = []
+    if page < total_pages - 1:
+        nav.append({"text": "Next ➡️", "callback_data": f"lkpage|{page+1}"})
+    if nav:
+        buttons.append(nav)
+    await edit(client, user_id, msg_id, "\n".join(lines), markup={"inline_keyboard": buttons})
+
+
+async def on_delkey_callback(client, cbq: dict, key_code: str):
+    """Inline button: permanently delete a license key (asks confirmation first)."""
+    admin_id = bot_state.get("admin_chat_id", "")
+    user_id = str(cbq["from"]["id"])
+    if user_id != admin_id:
+        await answer_cbq(client, cbq["id"], "❌ Admin only.")
+        return
+
+    # Replace key row with a confirm/cancel row
+    msg_id = cbq["message"]["message_id"]
+    await answer_cbq(client, cbq["id"], "⚠️ Confirm deletion?")
+    keys = license_manager.list_licenses()
+    PAGE = 5
+    total = len(keys)
+    total_pages = max(1, (total + PAGE - 1) // PAGE)
+    page = 0
+    slice_ = keys[page * PAGE: page * PAGE + PAGE]
+    lines = [f"🔑 <b>License Keys</b> (page {page+1}/{total_pages}, total: {total}):\n"]
+    buttons = []
+    for k in slice_:
+        status = "✅" if k["is_active"] else "🔴"
+        exp = _fmt_expires(k.get("expires_at") or "")
+        mid_disp = f"\n   🖥️ <code>{k['bound_device']}</code>" if k.get("bound_device") else ""
+        tier = k.get("tier", "?")
+        lines.append(f"{status} <code>{k['key_code']}</code>\n   {tier} | {exp}{mid_disp}")
+        if k["key_code"] == key_code:
+            # Show confirm row for this specific key
+            buttons.append([
+                {"text": "✅ Yes, Delete!", "callback_data": f"delconfirm|{key_code}"},
+                {"text": "❌ Cancel", "callback_data": f"lkpage|{page}"},
+            ])
+        else:
+            row = []
+            if k["is_active"]:
+                row.append({"text": f"🔒 Revoke {k['key_code'][:14]}", "callback_data": f"revoke|{k['key_code']}"})
+            else:
+                row.append({"text": f"↩️ Re-activate {k['key_code'][:10]}", "callback_data": f"reactivate|{k['key_code']}"})
+            row.append({"text": "🗑 Delete", "callback_data": f"delkey|{k['key_code']}"})
+            buttons.append(row)
+    nav = []
+    if page < total_pages - 1:
+        nav.append({"text": "Next ➡️", "callback_data": f"lkpage|{page+1}"})
+    if nav:
+        buttons.append(nav)
+    await edit(client, user_id, msg_id, "\n".join(lines), markup={"inline_keyboard": buttons})
+
+
+async def on_delconfirm_callback(client, cbq: dict, key_code: str):
+    """Inline button: confirmed permanent delete of a license key."""
+    admin_id = bot_state.get("admin_chat_id", "")
+    user_id = str(cbq["from"]["id"])
+    if user_id != admin_id:
+        await answer_cbq(client, cbq["id"], "❌ Admin only.")
+        return
+
+    license_manager.delete_license(key_code)
+    await answer_cbq(client, cbq["id"], f"🗑 Deleted {key_code}")
+
+    # Refresh page 0 after deletion
+    msg_id = cbq["message"]["message_id"]
+    keys = license_manager.list_licenses()
+    if not keys:
+        await edit(client, user_id, msg_id, "📭 No license keys in database.", markup={"inline_keyboard": []})
+        return
+    PAGE = 5
+    total = len(keys)
+    total_pages = max(1, (total + PAGE - 1) // PAGE)
+    page = 0
+    slice_ = keys[page * PAGE: page * PAGE + PAGE]
+    lines = [f"🔑 <b>License Keys</b> (page {page+1}/{total_pages}, total: {total}):\n"]
+    buttons = []
+    for k in slice_:
+        status = "✅" if k["is_active"] else "🔴"
+        exp = _fmt_expires(k.get("expires_at") or "")
+        mid_disp = f"\n   🖥️ <code>{k['bound_device']}</code>" if k.get("bound_device") else ""
+        tier = k.get("tier", "?")
+        lines.append(f"{status} <code>{k['key_code']}</code>\n   {tier} | {exp}{mid_disp}")
+        row = []
+        if k["is_active"]:
+            row.append({"text": f"🔒 Revoke {k['key_code'][:14]}", "callback_data": f"revoke|{k['key_code']}"})
+        else:
+            row.append({"text": f"↩️ Re-activate {k['key_code'][:10]}", "callback_data": f"reactivate|{k['key_code']}"})
+        row.append({"text": "🗑 Delete", "callback_data": f"delkey|{k['key_code']}"})
+        buttons.append(row)
+    nav = []
+    if page < total_pages - 1:
+        nav.append({"text": "Next ➡️", "callback_data": f"lkpage|{page+1}"})
+    if nav:
+        buttons.append(nav)
+    await edit(client, user_id, msg_id, "\n".join(lines), markup={"inline_keyboard": buttons})
 
 
 async def on_pending_cmd(client, msg: dict):
@@ -694,6 +909,52 @@ async def process_update(client: httpx.AsyncClient, update: dict):
                 await edit(client, cbq["from"]["id"], cbq["message"]["message_id"],
                            f"🖥️ <b>Machine ID:</b> <code>{mid}</code>\n\n<b>⬇️ Select license duration to generate:</b>",
                            markup=_duration_keyboard(mid))
+            elif parts[0] == "revoke" and len(parts) == 2:
+                await on_revoke_callback(client, cbq, parts[1])
+            elif parts[0] == "reactivate" and len(parts) == 2:
+                await on_reactivate_callback(client, cbq, parts[1])
+            elif parts[0] == "delkey" and len(parts) == 2:
+                await on_delkey_callback(client, cbq, parts[1])
+            elif parts[0] == "delconfirm" and len(parts) == 2:
+                await on_delconfirm_callback(client, cbq, parts[1])
+            elif parts[0] == "lkpage" and len(parts) == 2:
+                page_num = int(parts[1])
+                admin_id = bot_state.get("admin_chat_id", "")
+                user_id = str(cbq["from"]["id"])
+                if user_id != admin_id:
+                    await answer_cbq(client, cbq["id"], "❌ Admin only.")
+                    return
+                await answer_cbq(client, cbq["id"])
+                # Re-render list at the requested page into the same message
+                keys = license_manager.list_licenses()
+                PAGE = 5
+                total = len(keys)
+                total_pages = max(1, (total + PAGE - 1) // PAGE)
+                page_num = max(0, min(page_num, total_pages - 1))
+                slice_ = keys[page_num * PAGE: page_num * PAGE + PAGE]
+                lines = [f"🔑 <b>License Keys</b> (page {page_num+1}/{total_pages}, total: {total}):\n"]
+                buttons = []
+                for k in slice_:
+                    status = "✅" if k["is_active"] else "🔴"
+                    exp = _fmt_expires(k.get("expires_at") or "")
+                    mid_disp = f"\n   🖥️ <code>{k['bound_device']}</code>" if k.get("bound_device") else ""
+                    tier = k.get("tier", "?")
+                    lines.append(f"{status} <code>{k['key_code']}</code>\n   {tier} | {exp}{mid_disp}")
+                    row = []
+                    if k["is_active"]:
+                        row.append({"text": f"🔒 Revoke {k['key_code'][:14]}", "callback_data": f"revoke|{k['key_code']}"})
+                    else:
+                        row.append({"text": f"↩️ Re-activate {k['key_code'][:10]}", "callback_data": f"reactivate|{k['key_code']}"})
+                    row.append({"text": "🗑 Delete", "callback_data": f"delkey|{k['key_code']}"})
+                    buttons.append(row)
+                nav = []
+                if page_num > 0:
+                    nav.append({"text": "⬅️ Prev", "callback_data": f"lkpage|{page_num-1}"})
+                if page_num < total_pages - 1:
+                    nav.append({"text": "Next ➡️", "callback_data": f"lkpage|{page_num+1}"})
+                if nav:
+                    buttons.append(nav)
+                await edit(client, user_id, cbq["message"]["message_id"], "\n".join(lines), markup={"inline_keyboard": buttons})
             return
 
         # ── Regular message ────────────────────────────────
