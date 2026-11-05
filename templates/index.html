@@ -14,7 +14,7 @@
     <!-- Font Awesome Icons -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <!-- Custom Style -->
-    <link rel="stylesheet" href="/static/css/style.css?v=2.7.0">
+    <link rel="stylesheet" href="/static/css/style.css?v=2.8.0">
 </head>
 
 <body
@@ -284,12 +284,12 @@
                         <div>
                             <div class="flex justify-between items-center mb-1">
                                 <span class="text-gray-300" id="lblDelay">Invite Delay:</span>
-                                <span id="delayValueText" class="font-bold text-cyan-400">3s</span>
+                                <span id="delayValueText" class="font-bold text-cyan-400">1s</span>
                             </div>
-                            <input type="range" id="delaySlider" min="1" max="30" value="3"
+                            <input type="range" id="delaySlider" min="0.5" max="30" step="0.5" value="1"
                                 class="w-full accent-cyan-500 cursor-pointer"
                                 oninput="document.getElementById('delayValueText').innerText = this.value + 's'">
-                            <span class="text-[10px] text-gray-500">Wait between invites (prevents flood limits)</span>
+                            <span class="text-[10px] text-gray-500">Wait between invites (0.5s - 1s = Ultra Fast)</span>
                         </div>
 
                         <!-- Max Per Account -->
@@ -777,7 +777,7 @@
     </div>
 
     <!-- App JavaScript with Cache Busting -->
-    <script src="/static/js/app.js?v=2.7.0"></script>
+    <script src="/static/js/app.js?v=2.8.0"></script>
 </body>
 
 </html>

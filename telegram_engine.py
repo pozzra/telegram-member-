@@ -1121,6 +1121,8 @@ async def fetch_group_members(source_group_link: str, account_phone: Optional[st
 
 
 WARM_CLIENTS: Dict[str, TelegramClient] = {}
+# Fast in-memory cache for joined target groups (avoids redundant JoinChannelRequest calls per member)
+JOINED_TARGET_GROUPS: Dict[str, Any] = {}
 
 async def get_or_create_worker_client(account: Dict[str, Any], machine_id: Optional[str] = None) -> TelegramClient:
     phone = account.get("phone_number", "")
@@ -1196,16 +1198,20 @@ async def invite_single_member(
                 "phone": phone
             }
 
-        # 1. Resolve and smooth auto-join target group
-        target = await resolve_group_entity(client, target_group_link)
-        try:
-            await client(JoinChannelRequest(target))
-        except UserAlreadyParticipantError:
-            pass
-        except Exception:
-            pass
+        # 1. Resolve and auto-join target group (cached: only joins ONCE per account+group for maximum speed!)
+        target_cache_key = f"{phone}:{target_group_link.strip().casefold()}"
+        target = JOINED_TARGET_GROUPS.get(target_cache_key)
+        if not target:
+            target = await resolve_group_entity(client, target_group_link)
+            try:
+                await client(JoinChannelRequest(target))
+            except UserAlreadyParticipantError:
+                pass
+            except Exception:
+                pass
+            JOINED_TARGET_GROUPS[target_cache_key] = target
 
-        # 2. Resolve candidate (supports @username, +phone, or numeric ID)
+        # 2. Fast candidate resolution (supports @username, +phone, or numeric ID)
         cand = member.strip()
         user = None
 
@@ -1243,16 +1249,7 @@ async def invite_single_member(
         if getattr(user, 'deleted', False) or 'deleted account' in f"{first} {last}".casefold():
             return {"success": False, "status": "deleted", "message": f"{user_label} is a deleted account.", "phone": phone}
 
-        # Check if already participant
-        try:
-            await client(GetParticipantRequest(target, user.id))
-            return {"success": False, "status": "already_participant", "message": f"{user_label} is already a member.", "phone": phone, "user_label": user_label}
-        except UserNotParticipantError:
-            pass
-        except Exception:
-            pass
-
-        # Smooth auto-invite member to group
+        # 3. Direct fast invite (Telegram natively returns UserAlreadyParticipantError if already in group!)
         await client(InviteToChannelRequest(target, [user]))
         return {
             "success": True,

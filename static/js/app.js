@@ -1585,7 +1585,7 @@ async function startAddingMembers() {
     const targetGroup = document.getElementById("targetGroupInput").value.trim();
     const textarea = document.getElementById("memberListTextarea");
     const members = textarea.value.split("\n").map(s => s.trim()).filter(Boolean);
-    const delay = parseFloat(document.getElementById("delaySlider").value) || 3.0;
+    const delay = parseFloat(document.getElementById("delaySlider").value) || 1.0;
     const maxPerAcc = parseInt(document.getElementById("maxAccSlider").value) || 30;
 
     if (!targetGroup) {
