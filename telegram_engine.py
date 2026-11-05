@@ -18,6 +18,7 @@ from telethon import TelegramClient
 from telethon.sessions import StringSession
 from telethon.errors import (
     ApiIdInvalidError,
+    AuthKeyDuplicatedError,
     AuthKeyInvalidError,
     AuthKeyUnregisteredError,
     AuthRestartError,
@@ -249,7 +250,9 @@ def normalize_phone(raw_phone: str) -> str:
 
 def is_phone_number(text: str) -> bool:
     candidate = text.strip()
-    return candidate.startswith("+") or (candidate.isdigit() and len(candidate) >= 7)
+    # Phone numbers explicitly start with '+' (e.g. +85512345678).
+    # Bare numbers without '+' (e.g. 5043965327) are Telegram numeric User IDs.
+    return candidate.startswith("+")
 
 
 def get_accounts_file(machine_id: Optional[str] = None) -> Path:
@@ -1100,6 +1103,9 @@ async def fetch_group_members(source_group_link: str, account_phone: Optional[st
     if not members:
         return False, f"Could not find any members in {source_group_link}. The group might be completely private, empty, or a channel without chat history.", None
 
+    # Prioritize candidates with public @username and +phone first (smooth invites without privacy blocks)
+    members.sort(key=lambda m: 0 if (m.startswith("@") or m.startswith("+")) else 1)
+
     notice_msg = f"Successfully scraped {len(members)} active members!"
     if scraped_from == "messages":
         notice_msg = f"Scraped {len(members)} active members from chat history (Admin hides full member list in this group)!"
@@ -1144,55 +1150,88 @@ async def invite_single_member(
     machine_id: Optional[str] = None
 ) -> Dict[str, Any]:
     phone = account.get("phone_number", "")
+    client = None
     try:
-        client = await get_or_create_worker_client(account, machine_id)
-    except Exception as exc:
-        return {"success": False, "status": "connect_failed", "message": f"Could not connect account {phone}: {exc}", "phone": phone}
-
-    # Check authorization; retry once with fresh connection if needed
-    authorized = await client.is_user_authorized()
-    if not authorized:
-        # Try a fresh reconnect once before declaring unauthorized
-        WARM_CLIENTS.pop(phone, None)
-        try:
-            await client.disconnect()
-        except Exception:
-            pass
         try:
             client = await get_or_create_worker_client(account, machine_id)
-            authorized = await client.is_user_authorized()
-        except Exception:
-            authorized = False
+        except AuthKeyDuplicatedError:
+            WARM_CLIENTS.pop(phone, None)
+            account["needs_reauth"] = True
+            add_or_update_account({"phone_number": phone, "needs_reauth": True}, machine_id)
+            return {
+                "success": False,
+                "status": "auth_key_duplicated",
+                "message": f"Account {phone} session was revoked by Telegram security. Please Re-login.",
+                "phone": phone
+            }
+        except Exception as exc:
+            return {"success": False, "status": "connect_failed", "message": f"Could not connect account {phone}: {exc}", "phone": phone}
 
-    if not authorized:
-        WARM_CLIENTS.pop(phone, None)
+        # Check authorization; retry once with fresh connection if needed
+        authorized = await client.is_user_authorized()
+        if not authorized:
+            # Try a fresh reconnect once before declaring unauthorized
+            WARM_CLIENTS.pop(phone, None)
+            try:
+                await client.disconnect()
+            except Exception:
+                pass
+            try:
+                client = await get_or_create_worker_client(account, machine_id)
+                authorized = await client.is_user_authorized()
+            except Exception:
+                authorized = False
+
+        if not authorized:
+            WARM_CLIENTS.pop(phone, None)
+            try:
+                await client.disconnect()
+            except Exception:
+                pass
+            add_or_update_account({"phone_number": phone, "needs_reauth": True}, machine_id)
+            return {
+                "success": False,
+                "status": "unauthorized",
+                "message": f"Account {phone} is not authorized. Please re-login.",
+                "phone": phone
+            }
+
+        # 1. Resolve and smooth auto-join target group
+        target = await resolve_group_entity(client, target_group_link)
         try:
-            await client.disconnect()
+            await client(JoinChannelRequest(target))
+        except UserAlreadyParticipantError:
+            pass
         except Exception:
             pass
-        # Only mark needs_reauth on server; do NOT clear session_string here
-        # so the client can still attempt re-login from their cached session
-        add_or_update_account({"phone_number": phone, "needs_reauth": True}, machine_id)
-        return {
-            "success": False,
-            "status": "unauthorized",
-            "message": f"Account {phone} is not authorized. Please re-login.",
-            "phone": phone
-        }
 
-    try:
-        # Resolve target group
-        target = await resolve_group_entity(client, target_group_link)
+        # 2. Resolve candidate (supports @username, +phone, or numeric ID)
+        cand = member.strip()
+        user = None
 
-        # Resolve candidate
-        if is_phone_number(member):
-            res = await client(ResolvePhoneRequest(phone=normalize_phone(member)))
+        if cand.startswith("+"):
+            res = await client(ResolvePhoneRequest(phone=normalize_phone(cand)))
             users = [u for u in getattr(res, "users", []) if not getattr(u, "bot", False) and not getattr(u, "deleted", False)]
             if not users:
-                return {"success": False, "status": "not_found", "message": f"Phone {member} not found in Telegram.", "phone": phone}
+                return {"success": False, "status": "not_found", "message": f"Phone {cand} not found in Telegram.", "phone": phone}
             user = users[0]
+        elif cand.startswith("@") or not cand.isdigit():
+            username = cand.lstrip("@").strip()
+            try:
+                user = await client.get_entity(username)
+            except Exception as exc:
+                return {"success": False, "status": "not_found", "message": f"User @{username} not found ({exc}).", "phone": phone}
         else:
-            user = await client.get_entity(member.strip())
+            # Bare numeric user ID
+            try:
+                user = await client.get_entity(int(cand))
+            except Exception:
+                return {
+                    "success": False,
+                    "status": "privacy_restricted",
+                    "message": f"⚠️ User ID {cand} has no public @username and is protected by Telegram privacy.",
+                    "phone": phone
+                }
 
         # Check deleted account
         first = getattr(user, 'first_name', '') or ''
@@ -1213,7 +1252,7 @@ async def invite_single_member(
         except Exception:
             pass
 
-        # Invite user
+        # Smooth auto-invite member to group
         await client(InviteToChannelRequest(target, [user]))
         return {
             "success": True,
@@ -1247,6 +1286,14 @@ async def invite_single_member(
         }
     except Exception as exc:
         return {"success": False, "status": "error", "message": f"Failed to invite {member}: {exc}", "phone": phone}
+    finally:
+        # On Vercel serverless, disconnect cleanly to prevent AuthKeyDuplicatedError across lambda IPs
+        if os.environ.get("VERCEL") and client:
+            try:
+                await client.disconnect()
+            except Exception:
+                pass
+            WARM_CLIENTS.pop(phone, None)
 
 
 def stop_adding_job():

@@ -1710,14 +1710,33 @@ async function startAddingMembers() {
                     alert(stopMsg);
                     break;
                 }
-            } else if (data.status === "unauthorized") {
+            } else if (data.status === "unauthorized" || data.status === "auth_key_duplicated") {
                 skippedCount++;
                 breakdown[phone].status = "unauthorized";
-                logConsole(`⚠️ Account ${phone} session expired — please Re-login this account.`, "error");
-                // Mark needs_reauth but DO NOT clear session_string — let user re-login manually
                 worker.needs_reauth = true;
                 saveAccountsToLocalStorage(currentAccounts);
                 renderAccounts(currentAccounts);
+                const alertMsg = currentLanguage === "km"
+                    ? `⚠️ គណនី ${phone} ត្រូវបាន Telegram កាត់ផ្តាច់ (Session ផុតកំណត់ ឬប្រើលើ IP ផ្សេងគ្នា)។ សូមចុច Re-login គណនីនេះឡើងវិញ!`
+                    : `⚠️ Account ${phone} session expired or revoked by Telegram. Please Re-login this account!`;
+                logConsole(alertMsg, "error");
+                alert(alertMsg);
+                break;
+            } else if (data.status === "connect_failed") {
+                skippedCount++;
+                breakdown[phone].status = "unauthorized";
+                worker.needs_reauth = true;
+                saveAccountsToLocalStorage(currentAccounts);
+                renderAccounts(currentAccounts);
+                const alertMsg = currentLanguage === "km"
+                    ? `⚠️ មិនអាចតភ្ជាប់គណនី ${phone} បានទេ: ${data.message || 'សូមពិនិត្យមើលគណនី ឬ Re-login'}`
+                    : `⚠️ Could not connect account ${phone}: ${data.message || 'Please check or re-login'}`;
+                logConsole(alertMsg, "error");
+                alert(alertMsg);
+                break;
+            } else if (data.status === "privacy_restricted") {
+                skippedCount++;
+                logConsole(data.message || `⚠️ Skipped ${candidate} (User privacy settings block stranger invites)`, "warning");
             } else if (data.status === "no_admin") {
                 skippedCount++;
                 breakdown[phone].status = "no_admin";
