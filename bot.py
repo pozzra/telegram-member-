@@ -258,6 +258,7 @@ async def on_start(client, msg: dict):
             f"/genkey &lt;MID&gt; &lt;days&gt; — Generate key (0=lifetime)\n"
             f"/listkeys — Show recent license keys\n"
             f"/revoke &lt;KEY&gt; — Revoke a key\n"
+            f"/deleteall — Delete & blacklist all keys\n"
             f"/pending — View pending requests\n"
             f"/info — Bot status\n\n"
             f"Users who submit their Machine ID will appear here with 1-click approval buttons. ✅"
@@ -723,7 +724,7 @@ async def on_reactivate_callback(client, cbq: dict, key_code: str):
         await answer_cbq(client, cbq["id"], "❌ Admin only.")
         return
 
-    import sqlite3 as _sqlite3
+    license_manager.unrevoke_key(key_code)
     conn = license_manager.get_connection()
     with conn:
         conn.execute("UPDATE licenses SET is_active = 1 WHERE key_code = ?", (key_code.strip(),))
@@ -875,6 +876,38 @@ async def on_pending_cmd(client, msg: dict):
     await send(client, chat_id, "\n".join(lines))
 
 
+async def on_deleteall_cmd(client, msg: dict):
+    """Command: /deleteall — Delete and blacklist all license keys."""
+    chat_id = str(msg["chat"]["id"])
+    if chat_id != bot_state.get("admin_chat_id"):
+        await send(client, chat_id, "❌ Admin only.")
+        return
+
+    text = (msg.get("text") or "").strip().lower()
+    if "confirm" not in text:
+        buttons = [
+            [
+                {"text": "⚠️ Yes, Delete All Keys", "callback_data": "delall|confirm"},
+                {"text": "❌ Cancel", "callback_data": "delall|cancel"},
+            ]
+        ]
+        await send(client, chat_id,
+            "⚠️ <b>Delete All License Keys?</b>\n\n"
+            "This will permanently delete and blacklist all non-VIP keys.\n"
+            "All active users will immediately lose access.\n"
+            "<i>(VIP Lifetime key will remain safe)</i>\n\n"
+            "Are you sure?",
+            markup={"inline_keyboard": buttons}
+        )
+        return
+
+    count = license_manager.delete_all_licenses()
+    await send(client, chat_id,
+        f"🗑️ <b>Deleted & Blacklisted {count} License Key(s)!</b>\n\n"
+        f"All non-VIP keys have been revoked and deleted from the system."
+    )
+
+
 async def on_info_cmd(client, msg: dict):
     chat_id = str(msg["chat"]["id"])
     admin_id = bot_state.get("admin_chat_id", "")
@@ -917,6 +950,24 @@ async def process_update(client: httpx.AsyncClient, update: dict):
                 await on_delkey_callback(client, cbq, parts[1])
             elif parts[0] == "delconfirm" and len(parts) == 2:
                 await on_delconfirm_callback(client, cbq, parts[1])
+            elif parts[0] == "delall" and len(parts) == 2:
+                action = parts[1]
+                admin_id = bot_state.get("admin_chat_id", "")
+                user_id = str(cbq["from"]["id"])
+                if user_id != admin_id:
+                    await answer_cbq(client, cbq["id"], "❌ Admin only.")
+                    return
+                if action == "confirm":
+                    count = license_manager.delete_all_licenses()
+                    await answer_cbq(client, cbq["id"], f"Deleted {count} keys.")
+                    await edit(client, user_id, cbq["message"]["message_id"],
+                               f"🗑️ <b>Deleted & Blacklisted {count} License Keys!</b>\n\nAll non-VIP keys have been removed.\nUsers will be blocked immediately.",
+                               markup={"inline_keyboard": []})
+                else:
+                    await answer_cbq(client, cbq["id"], "Cancelled.")
+                    await edit(client, user_id, cbq["message"]["message_id"],
+                               "❌ Deletion cancelled.", markup={"inline_keyboard": []})
+                return
             elif parts[0] == "lkpage" and len(parts) == 2:
                 page_num = int(parts[1])
                 admin_id = bot_state.get("admin_chat_id", "")
@@ -975,6 +1026,8 @@ async def process_update(client: httpx.AsyncClient, update: dict):
             await on_listkeys_cmd(client, msg)
         elif cmd == "/revoke":
             await on_revoke_cmd(client, msg)
+        elif cmd in ("/deleteall", "/delete_all") or (cmd == "/delete" and "all" in text.lower()):
+            await on_deleteall_cmd(client, msg)
         elif cmd == "/pending":
             await on_pending_cmd(client, msg)
         elif cmd == "/info":

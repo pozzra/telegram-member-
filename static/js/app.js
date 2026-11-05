@@ -625,8 +625,8 @@ function renderAccounts(accounts) {
         const spamBadge = isSpam
             ? `<span class="px-1.5 py-0.5 rounded text-[10px] font-bold bg-red-500/20 text-red-400 border border-red-500/40 animate-pulse">⚠️ Spam</span>`
             : "";
-        const needsAuthBadge = (!acc.session_string)
-            ? `<button onclick="openAddAccountModal(); const pi=document.getElementById('inputPhoneNumber'); if(pi) pi.value='${acc.phone_number}';" title="Session needs authorization on cloud. Click to re-login." class="px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30 hover:bg-amber-500/40 cursor-pointer">🔑 Re-login</button>`
+        const needsAuthBadge = (!acc.session_string || acc.needs_reauth)
+            ? `<button onclick="openAddAccountModal(); switchLoginMode('phone'); const pi=document.getElementById('inputPhone'); if(pi) pi.value='${acc.phone_number}';" title="Session needs authorization on cloud. Click to re-login." class="px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30 hover:bg-amber-500/40 cursor-pointer">🔑 Re-login</button>`
             : "";
 
         const fullName = `${acc.first_name || ""} ${acc.last_name || ""}`.trim() || acc.username || acc.phone_number;
@@ -1396,9 +1396,31 @@ async function fetchSourceMembers() {
             appendMembersToTextarea(fetched);
             logConsole(`Scraped ${fetched.length} members from ${sourceGroup} (Filtered ${data.data.deleted_count} deleted, ${data.data.bot_count} bots)`, "success");
         } else {
-            alert(data.detail || data.message || "Could not fetch members.");
+            const errMsg = data.detail || data.message || "Could not fetch members.";
+            logConsole(`Scrape Error: ${errMsg}`, "error");
+            if (errMsg.toLowerCase().includes("not authorized") || errMsg.toLowerCase().includes("re-login")) {
+                const m = errMsg.match(/\+?\d{7,15}/);
+                const unauthPhone = m ? m[0] : "";
+                if (unauthPhone) {
+                    currentAccounts.forEach(a => {
+                        if (a.phone_number === unauthPhone) {
+                            a.needs_reauth = true;
+                            a.session_string = "";
+                        }
+                    });
+                    saveAccountsToLocalStorage(currentAccounts);
+                    renderAccounts(currentAccounts);
+                }
+                const promptMsg = currentLanguage === "km"
+                    ? `គណនី ${unauthPhone || ""} ផុតកំណត់ការអនុញ្ញាត (Unauthorized)។ សូមចុចប៊ូតុង "🔑 Re-login" លើគណនីនោះដើម្បីភ្ជាប់ឡើងវិញ!`
+                    : `Account ${unauthPhone || ""} is not authorized. Please click "🔑 Re-login" next to the account to reconnect.`;
+                alert(promptMsg);
+            } else {
+                alert(errMsg);
+            }
         }
     } catch (err) {
+        logConsole(`Scraping network error: ${err.message}`, "error");
         alert("Scraping error: " + err.message);
     } finally {
         btn.disabled = false;
@@ -1498,6 +1520,8 @@ async function startAddingMembers() {
     btnStart.disabled = true;
     btnStop.disabled = false;
     isJobRunning = true;
+    const pBar = document.getElementById("jobProgressBar");
+    if (pBar) pBar.classList.add("animate-stripes");
 
     try {
         const res = await fetch(`${API_BASE}/api/members/start-add`, {
@@ -1513,10 +1537,32 @@ async function startAddingMembers() {
         });
         const data = await res.json();
         if (!res.ok || !data.success) {
-            alert(data.detail || data.message || "Failed to start adding members.");
+            const errMsg = data.detail || data.message || "Failed to start adding members.";
+            logConsole(`Start Adding Error: ${errMsg}`, "error");
+            if (errMsg.toLowerCase().includes("not authorized") || errMsg.toLowerCase().includes("re-login")) {
+                const m = errMsg.match(/\+?\d{7,15}/);
+                const unauthPhone = m ? m[0] : "";
+                if (unauthPhone) {
+                    currentAccounts.forEach(a => {
+                        if (a.phone_number === unauthPhone) {
+                            a.needs_reauth = true;
+                            a.session_string = "";
+                        }
+                    });
+                    saveAccountsToLocalStorage(currentAccounts);
+                    renderAccounts(currentAccounts);
+                }
+                const promptMsg = currentLanguage === "km"
+                    ? `គណនី ${unauthPhone || ""} ផុតកំណត់ការអនុញ្ញាត (Unauthorized)។ សូមចុចប៊ូតុង "🔑 Re-login" លើគណនីនោះដើម្បីភ្ជាប់ឡើងវិញ!`
+                    : `Account ${unauthPhone || ""} is not authorized. Please click "🔑 Re-login" to reconnect.`;
+                alert(promptMsg);
+            } else {
+                alert(errMsg);
+            }
             btnStart.disabled = false;
             btnStop.disabled = true;
             isJobRunning = false;
+            if (pBar) pBar.classList.remove("animate-stripes");
         } else {
             logConsole(`Started member addition process to ${targetGroup}`, "info");
         }
@@ -1525,10 +1571,13 @@ async function startAddingMembers() {
         btnStart.disabled = false;
         btnStop.disabled = true;
         isJobRunning = false;
+        if (pBar) pBar.classList.remove("animate-stripes");
     }
 }
 
 async function stopAddingMembers() {
+    const pBar = document.getElementById("jobProgressBar");
+    if (pBar) pBar.classList.remove("animate-stripes");
     const btnStop = document.getElementById("btnStopAdd");
     btnStop.disabled = true;
     btnStop.innerHTML = `<i class="fas fa-circle-notch fa-spin"></i> Stopping...`;
@@ -1655,7 +1704,9 @@ function handleWsMessage(msg) {
 
     if (msg.type === "progress") {
         document.getElementById("jobProgressPercent").innerText = `${msg.progress ?? 0}%`;
-        document.getElementById("jobProgressBar").style.width = `${msg.progress ?? 0}%`;
+        const pb = document.getElementById("jobProgressBar");
+        pb.style.width = `${msg.progress ?? 0}%`;
+        pb.classList.add("animate-stripes");
         document.getElementById("jobStatusText").innerText = msg.status || "";
         document.getElementById("statAdded").innerText = msg.added ?? 0;
         document.getElementById("statSkipped").innerText = msg.skipped ?? 0;
@@ -1667,7 +1718,9 @@ function handleWsMessage(msg) {
         document.getElementById("btnStartAdd").disabled = false;
         document.getElementById("btnStopAdd").disabled = true;
         document.getElementById("jobProgressPercent").innerText = "100%";
-        document.getElementById("jobProgressBar").style.width = "100%";
+        const pb = document.getElementById("jobProgressBar");
+        pb.style.width = "100%";
+        pb.classList.remove("animate-stripes");
 
         const added = msg.added ?? 0;
         const skipped = msg.skipped ?? 0;
@@ -1682,7 +1735,9 @@ function handleWsMessage(msg) {
             document.getElementById("btnStartAdd").disabled = true;
             document.getElementById("btnStopAdd").disabled = false;
             document.getElementById("jobProgressPercent").innerText = `${job.progress ?? 0}%`;
-            document.getElementById("jobProgressBar").style.width = `${job.progress ?? 0}%`;
+            const pb = document.getElementById("jobProgressBar");
+            pb.style.width = `${job.progress ?? 0}%`;
+            pb.classList.add("animate-stripes");
             document.getElementById("jobStatusText").innerText = job.status_message || "";
             document.getElementById("statAdded").innerText = job.added_count ?? 0;
             document.getElementById("statSkipped").innerText = job.skipped_count ?? 0;

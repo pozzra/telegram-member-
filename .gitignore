@@ -8,6 +8,8 @@ data/*.db
 data/accounts.json
 data/bot_data.json
 data/pending_logins.json
+data/revoked_keys.json
+data/accounts_*.json
 server.log
 server.err.log
 *.log

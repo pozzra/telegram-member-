@@ -3,7 +3,7 @@
 
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, viewport-fit=cover">
     <title>Telegram Adder Pro - Web Edition</title>
     <!-- Defensive Polyfill for Tailwind CDN crypto in non-HTTPS / restricted contexts -->
     <script>
@@ -14,36 +14,36 @@
     <!-- Font Awesome Icons -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <!-- Custom Style -->
-    <link rel="stylesheet" href="/static/css/style.css">
+    <link rel="stylesheet" href="/static/css/style.css?v=2.2.0">
 </head>
 
 <body
-    class="bg-[#0b0f17] text-gray-200 min-h-screen flex flex-col font-sans selection:bg-cyan-500 selection:text-white">
+    class="bg-[#0b0f17] text-gray-200 min-h-screen flex flex-col font-sans selection:bg-cyan-500 selection:text-white overflow-x-hidden">
 
     <!-- Top Navigation Bar -->
-    <header class="border-b border-gray-800 bg-[#111827]/80 backdrop-blur-md sticky top-0 z-40 px-4 py-3 shadow-lg">
-        <div class="max-w-7xl mx-auto flex flex-wrap items-center justify-between gap-4">
+    <header class="border-b border-gray-800/80 bg-[#111827]/85 backdrop-blur-md sticky top-0 z-40 px-2.5 sm:px-4 py-2.5 sm:py-3 shadow-lg">
+        <div class="max-w-7xl mx-auto flex items-center justify-between gap-2 sm:gap-4">
 
             <!-- Logo & Brand -->
-            <div class="flex items-center gap-3">
+            <div class="flex items-center gap-2 sm:gap-3 min-w-0">
                 <div
-                    class="w-10 h-10 rounded-xl bg-gradient-to-tr from-cyan-500 to-blue-600 flex items-center justify-center shadow-lg shadow-cyan-500/20 text-white text-xl font-bold">
+                    class="w-8 h-8 sm:w-10 sm:h-10 rounded-xl bg-gradient-to-tr from-cyan-500 to-blue-600 flex items-center justify-center shadow-lg shadow-cyan-500/25 text-white text-base sm:text-xl font-bold shrink-0">
                     <i class="fab fa-telegram-plane"></i>
                 </div>
-                <div>
-                    <h1 class="text-lg font-bold tracking-wide text-white flex items-center gap-2">
+                <div class="min-w-0 truncate">
+                    <h1 class="text-sm sm:text-lg font-bold tracking-wide text-white flex items-center gap-1.5 sm:gap-2 truncate">
                         Telegram Adder Web <span
-                            class="text-xs px-2 py-0.5 rounded-full bg-cyan-500/20 text-cyan-400 border border-cyan-500/30">PRO
+                            class="text-[10px] sm:text-xs px-1.5 sm:px-2 py-0.5 rounded-full bg-cyan-500/20 text-cyan-400 border border-cyan-500/30">PRO
                             v2.0</span>
                     </h1>
-                    <p class="text-xs text-gray-400" id="headerSubtitle">Multi-Account Load Balancing & Member Inviter
+                    <p class="text-[10px] sm:text-xs text-gray-400 truncate" id="headerSubtitle">Multi-Account Load Balancing & Member Inviter
                     </p>
                 </div>
             </div>
 
             <!-- System Stats Badge (RAM / CPU) -->
             <div
-                class="hidden md:flex items-center gap-4 bg-gray-900/80 px-3 py-1.5 rounded-lg border border-gray-800 text-xs text-gray-400">
+                class="hidden lg:flex items-center gap-3 bg-gray-900/80 px-3 py-1.5 rounded-lg border border-gray-800 text-xs text-gray-400 shrink-0">
                 <div class="flex items-center gap-1.5">
                     <i class="fas fa-microchip text-cyan-400"></i>
                     <span>CPU:</span>
@@ -64,26 +64,26 @@
             </div>
 
             <!-- Controls: License, Language, Admin -->
-            <div class="flex items-center gap-2">
+            <div class="flex items-center gap-1 sm:gap-2 shrink-0">
                 <!-- License Status Pill -->
                 <button id="licenseStatusBtn" onclick="openLicenseModal()"
-                    class="flex items-center gap-2 px-3 py-1.5 rounded-lg border text-xs font-semibold transition-all duration-200 shadow-sm">
+                    class="flex items-center gap-1.5 px-2 sm:px-3 py-1 sm:py-1.5 rounded-lg border text-[11px] sm:text-xs font-semibold transition-all duration-200 shadow-sm">
                     <span class="w-2 h-2 rounded-full animate-pulse" id="licenseStatusDot"></span>
-                    <span id="licenseStatusText">Checking License...</span>
+                    <span id="licenseStatusText" class="truncate max-w-[110px] sm:max-w-none">Checking...</span>
                 </button>
 
                 <!-- Language Switcher -->
                 <button onclick="toggleLanguage()"
-                    class="px-3 py-1.5 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-lg text-xs font-medium border border-gray-700 flex items-center gap-1.5 transition">
+                    class="px-2 sm:px-2.5 py-1 sm:py-1.5 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-lg text-[11px] sm:text-xs font-medium border border-gray-700 flex items-center gap-1 transition">
                     <i class="fas fa-globe text-cyan-400"></i>
                     <span id="currentLangLabel">EN</span>
                 </button>
 
                 <!-- Admin Contact -->
                 <a href="https://t.me/kun_amra" target="_blank"
-                    class="px-3 py-1.5 bg-blue-600/20 hover:bg-blue-600/30 text-blue-400 border border-blue-500/30 rounded-lg text-xs font-medium flex items-center gap-1.5 transition">
+                    class="px-2 sm:px-2.5 py-1 sm:py-1.5 bg-blue-600/20 hover:bg-blue-600/30 text-blue-400 border border-blue-500/30 rounded-lg text-[11px] sm:text-xs font-medium flex items-center gap-1 transition">
                     <i class="fab fa-telegram"></i>
-                    <span class="hidden sm:inline">Admin:</span> @kun_amra
+                    <span class="hidden md:inline">@kun_amra</span>
                 </a>
             </div>
 
@@ -107,16 +107,16 @@
     </div>
 
     <!-- Main Content Container -->
-    <main class="max-w-7xl mx-auto px-4 py-6 flex-1 w-full space-y-6">
+    <main class="max-w-7xl mx-auto px-2.5 sm:px-4 py-4 sm:py-6 flex-1 w-full space-y-4 sm:space-y-6">
 
         <!-- Grid Layout: 2 Columns on Large Screens -->
-        <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-4 sm:gap-6">
 
             <!-- LEFT COLUMN: Accounts Manager (5 Columns) -->
-            <div class="lg:col-span-5 space-y-6">
+            <div class="lg:col-span-5 space-y-4 sm:space-y-6">
 
                 <!-- Account Management Card -->
-                <div class="bg-[#111827] rounded-2xl border border-gray-800 p-5 shadow-xl relative overflow-hidden">
+                <div class="bg-[#111827]/90 backdrop-blur-md rounded-2xl border border-gray-800 p-3.5 sm:p-5 shadow-xl relative overflow-hidden interactive-card">
                     <div class="flex items-center justify-between mb-4">
                         <div class="flex items-center gap-2">
                             <div
@@ -171,10 +171,10 @@
             </div>
 
             <!-- RIGHT COLUMN: Scraper & Member Adder (7 Columns) -->
-            <div class="lg:col-span-7 space-y-6">
+            <div class="lg:col-span-7 space-y-4 sm:space-y-6">
 
                 <!-- 1. Source Group Scraper Card -->
-                <div class="bg-[#111827] rounded-2xl border border-gray-800 p-5 shadow-xl">
+                <div class="bg-[#111827]/90 backdrop-blur-md rounded-2xl border border-gray-800 p-3.5 sm:p-5 shadow-xl interactive-card">
                     <div class="flex items-center gap-2 mb-3">
                         <div
                             class="w-8 h-8 rounded-lg bg-emerald-500/10 text-emerald-400 flex items-center justify-center">
@@ -203,7 +203,7 @@
                 </div>
 
                 <!-- 2. Member Candidates List Card -->
-                <div class="bg-[#111827] rounded-2xl border border-gray-800 p-5 shadow-xl">
+                <div class="bg-[#111827]/90 backdrop-blur-md rounded-2xl border border-gray-800 p-3.5 sm:p-5 shadow-xl interactive-card">
                     <div class="flex items-center justify-between mb-2">
                         <div class="flex items-center gap-2">
                             <div
@@ -253,7 +253,7 @@
                 </div>
 
                 <!-- 3. Target Group & Adding Engine -->
-                <div class="bg-[#111827] rounded-2xl border border-gray-800 p-5 shadow-xl space-y-4">
+                <div class="bg-[#111827]/90 backdrop-blur-md rounded-2xl border border-gray-800 p-3.5 sm:p-5 shadow-xl space-y-4 interactive-card">
                     <div class="flex items-center gap-2">
                         <div class="w-8 h-8 rounded-lg bg-blue-500/10 text-blue-400 flex items-center justify-center">
                             <i class="fas fa-user-plus"></i>
@@ -308,7 +308,7 @@
                     <!-- Start / Stop Action Buttons -->
                     <div class="flex items-center gap-3 pt-2">
                         <button id="btnStartAdd" onclick="startAddingMembers()"
-                            class="flex-1 py-3 bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-white font-bold rounded-xl shadow-lg shadow-cyan-500/25 flex items-center justify-center gap-2 transition transform active:scale-95">
+                            class="flex-1 py-3 bg-gradient-to-r from-cyan-500 via-blue-500 to-cyan-500 btn-shimmer hover:opacity-95 text-white font-bold rounded-xl shadow-lg shadow-cyan-500/25 flex items-center justify-center gap-2 transition transform active:scale-95 text-xs sm:text-sm">
                             <i class="fas fa-play"></i>
                             <span id="btnStartText">START ADDING MEMBERS</span>
                         </button>
@@ -347,7 +347,7 @@
                             <button onclick="clearConsoleLogs()"
                                 class="hover:text-gray-200 transition text-[10px]">Clear</button>
                         </div>
-                        <div id="consoleLogArea" class="h-36 overflow-y-auto space-y-1 font-mono text-[11px] pr-1">
+                        <div id="consoleLogArea" class="h-28 sm:h-36 overflow-y-auto space-y-1 font-mono text-[10px] sm:text-[11px] pr-1">
                             <div class="text-gray-600">[System ready. Waiting for tasks...]</div>
                         </div>
                     </div>
@@ -370,9 +370,9 @@
     <!-- MODAL 1: License Activation Modal -->
     <!-- ============================================================== -->
     <div id="licenseModal"
-        class="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 hidden">
+        class="fixed inset-0 bg-black/85 backdrop-blur-sm z-50 flex items-center justify-center p-3 sm:p-4 hidden">
         <div
-            class="bg-[#111827] border border-cyan-500/40 rounded-2xl w-full max-w-md p-6 shadow-2xl relative animate-fade-in">
+            class="bg-[#111827] border border-cyan-500/40 rounded-2xl w-full max-w-md max-h-[92vh] overflow-y-auto p-4 sm:p-6 shadow-2xl relative modal-animate-enter">
             <button onclick="closeLicenseModal()"
                 class="absolute top-4 right-4 text-gray-400 hover:text-white transition">
                 <i class="fas fa-times"></i>
@@ -460,8 +460,8 @@
     <!-- MODAL 2: Add Telegram Account Modal (Multi-Step Wizard) -->
     <!-- ============================================================== -->
     <div id="addAccountModal"
-        class="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 hidden">
-        <div class="bg-[#111827] border border-gray-700 rounded-2xl w-full max-w-md p-6 shadow-2xl relative">
+        class="fixed inset-0 bg-black/85 backdrop-blur-sm z-50 flex items-center justify-center p-3 sm:p-4 hidden">
+        <div class="bg-[#111827] border border-gray-700 rounded-2xl w-full max-w-md max-h-[92vh] overflow-y-auto p-4 sm:p-6 shadow-2xl relative modal-animate-enter">
             <button onclick="closeAddAccountModal()"
                 class="absolute top-4 right-4 text-gray-400 hover:text-white transition">
                 <i class="fas fa-times"></i>
@@ -721,8 +721,8 @@
     <!-- MODAL 3: Summary Breakdown Report Modal -->
     <!-- ============================================================== -->
     <div id="summaryModal"
-        class="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 hidden">
-        <div class="bg-[#111827] border border-gray-700 rounded-2xl w-full max-w-lg p-6 shadow-2xl relative">
+        class="fixed inset-0 bg-black/85 backdrop-blur-sm z-50 flex items-center justify-center p-3 sm:p-4 hidden">
+        <div class="bg-[#111827] border border-gray-700 rounded-2xl w-full max-w-lg max-h-[92vh] overflow-y-auto p-4 sm:p-6 shadow-2xl relative modal-animate-enter">
             <button onclick="closeSummaryModal()"
                 class="absolute top-4 right-4 text-gray-400 hover:text-white transition">
                 <i class="fas fa-times"></i>
@@ -765,7 +765,7 @@
     </div>
 
     <!-- App JavaScript with Cache Busting -->
-    <script src="/static/js/app.js?v=2.1.0"></script>
+    <script src="/static/js/app.js?v=2.2.0"></script>
 </body>
 
 </html>

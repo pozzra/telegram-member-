@@ -2,8 +2,22 @@
 
 @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
 
+:root {
+    --safe-area-inset-top: env(safe-area-inset-top, 0px);
+    --safe-area-inset-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+html {
+    scroll-behavior: smooth;
+    -webkit-tap-highlight-color: transparent;
+}
+
 body {
     font-family: 'Plus Jakarta Sans', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    overflow-x: hidden;
+    padding-top: var(--safe-area-inset-top);
+    padding-bottom: var(--safe-area-inset-bottom);
+    -webkit-font-smoothing: antialiased;
 }
 
 code, pre, .font-mono {
@@ -12,21 +26,21 @@ code, pre, .font-mono {
 
 /* Custom Scrollbars */
 ::-webkit-scrollbar {
-    width: 6px;
-    height: 6px;
+    width: 5px;
+    height: 5px;
 }
 ::-webkit-scrollbar-track {
-    background: #0f172a;
+    background: #0b0f17;
 }
 ::-webkit-scrollbar-thumb {
     background: #334155;
-    border-radius: 4px;
+    border-radius: 999px;
 }
 ::-webkit-scrollbar-thumb:hover {
-    background: #475569;
+    background: #06b6d4;
 }
 
-/* Animations */
+/* Smooth Animations */
 @keyframes fadeIn {
     from {
         opacity: 0;
@@ -42,13 +56,101 @@ code, pre, .font-mono {
     animation: fadeIn 0.18s ease-out forwards;
 }
 
+@keyframes modalEnter {
+    0% {
+        opacity: 0;
+        transform: scale(0.94) translateY(10px);
+    }
+    100% {
+        opacity: 1;
+        transform: scale(1) translateY(0);
+    }
+}
+
+.modal-animate-enter {
+    animation: modalEnter 0.22s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+/* Futuristic Ambient Aura Glow */
+@keyframes auraPulse {
+    0%, 100% {
+        opacity: 0.25;
+        transform: scale(1);
+    }
+    50% {
+        opacity: 0.45;
+        transform: scale(1.05);
+    }
+}
+
+.animate-aura {
+    animation: auraPulse 4s ease-in-out infinite;
+}
+
+/* Live Signal Beacon Animation */
+@keyframes beaconPulse {
+    0% {
+        box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7);
+    }
+    70% {
+        box-shadow: 0 0 0 8px rgba(16, 185, 129, 0);
+    }
+    100% {
+        box-shadow: 0 0 0 0 rgba(16, 185, 129, 0);
+    }
+}
+
+.beacon-live {
+    animation: beaconPulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+/* Animated Progress Bar Stripes */
+@keyframes progressStripes {
+    0% { background-position: 0 0; }
+    100% { background-position: 30px 0; }
+}
+
+.animate-stripes {
+    background-image: linear-gradient(
+        45deg,
+        rgba(255, 255, 255, 0.15) 25%,
+        transparent 25%,
+        transparent 50%,
+        rgba(255, 255, 255, 0.15) 50%,
+        rgba(255, 255, 255, 0.15) 75%,
+        transparent 75%,
+        transparent
+    );
+    background-size: 30px 30px;
+    animation: progressStripes 1s linear infinite;
+}
+
+/* Button Shimmer */
+@keyframes btnShimmer {
+    0% {
+        background-position: -200% center;
+    }
+    100% {
+        background-position: 200% center;
+    }
+}
+
+.btn-shimmer {
+    background-size: 200% auto;
+    animation: btnShimmer 3s ease-in-out infinite;
+}
+
 /* Glow effects */
 .glow-cyan {
-    box-shadow: 0 0 20px -3px rgba(6, 182, 212, 0.25);
+    box-shadow: 0 0 24px -2px rgba(6, 182, 212, 0.35);
 }
 
 .glow-amber {
-    box-shadow: 0 0 20px -3px rgba(245, 158, 11, 0.25);
+    box-shadow: 0 0 24px -2px rgba(245, 158, 11, 0.35);
+}
+
+.glow-emerald {
+    box-shadow: 0 0 24px -2px rgba(16, 185, 129, 0.35);
 }
 
 /* Active / Inactive states */
@@ -59,3 +161,28 @@ code, pre, .font-mono {
     filter: grayscale(0.5);
 }
 
+/* Interactive Card Micro-interactions */
+.interactive-card {
+    transition: transform 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.interactive-card:hover {
+    border-color: rgba(6, 182, 212, 0.4);
+    box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.5), 0 0 15px -3px rgba(6, 182, 212, 0.15);
+}
+
+/* Touch feedback for iOS (iPhone SE to 18 Pro Max) */
+button, input, select, textarea {
+    touch-action: manipulation;
+}
+
+button:active {
+    transform: scale(0.97);
+}
+
+/* Safe viewport height for mobile keyboards */
+@supports (height: 100dvh) {
+    .min-h-screen-dvh {
+        min-height: 100dvh;
+    }
+}

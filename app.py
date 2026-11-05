@@ -238,6 +238,27 @@ async def admin_list_keys(admin_key: str):
     return {"success": True, "licenses": license_manager.list_licenses()}
 
 
+@app.post("/api/license/admin/revoke")
+async def admin_revoke_key(request: Request):
+    body = await request.json()
+    admin_key = body.get("admin_key", "")
+    if admin_key != "kun_amra_admin_2026":
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    key_code = body.get("key_code", "")
+    license_manager.revoke_license(key_code)
+    return {"success": True, "message": f"Key {key_code} revoked and blacklisted."}
+
+
+@app.post("/api/license/admin/delete-all")
+async def admin_delete_all(request: Request):
+    body = await request.json()
+    admin_key = body.get("admin_key", "")
+    if admin_key != "kun_amra_admin_2026":
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    count = license_manager.delete_all_licenses()
+    return {"success": True, "deleted": count}
+
+
 # ==========================================
 # System Stats Monitor (CPU / RAM / Disk)
 # ==========================================

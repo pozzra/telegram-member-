@@ -188,6 +188,42 @@ def create_license(days=None, tier="VIP", max_accounts=50, note="", custom_key=N
         "note": note
     }
 
+REVOKED_KEYS_FILE = DATA_DIR / "revoked_keys.json"
+
+def get_revoked_keys() -> set:
+    try:
+        if REVOKED_KEYS_FILE.exists():
+            with open(REVOKED_KEYS_FILE, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                if isinstance(data, list):
+                    return set(str(k).upper().strip() for k in data if k)
+    except Exception:
+        pass
+    return set()
+
+def save_revoked_key(key_code: str):
+    if not key_code:
+        return
+    revoked = get_revoked_keys()
+    revoked.add(str(key_code).upper().strip())
+    try:
+        REVOKED_KEYS_FILE.parent.mkdir(parents=True, exist_ok=True)
+        with open(REVOKED_KEYS_FILE, "w", encoding="utf-8") as f:
+            json.dump(sorted(list(revoked)), f, indent=2)
+    except Exception:
+        pass
+
+def unrevoke_key(key_code: str):
+    if not key_code:
+        return
+    revoked = get_revoked_keys()
+    revoked.discard(str(key_code).upper().strip())
+    try:
+        with open(REVOKED_KEYS_FILE, "w", encoding="utf-8") as f:
+            json.dump(sorted(list(revoked)), f, indent=2)
+    except Exception:
+        pass
+
 def verify_license(key_code: str, machine_id: str = None, bind_if_unbound: bool = False):
     if not key_code:
         return False, "License key is missing or empty.", None
@@ -196,6 +232,11 @@ def verify_license(key_code: str, machine_id: str = None, bind_if_unbound: bool 
     cursor = conn.cursor()
     clean_key = key_code.strip().upper()
     clean_machine = machine_id.strip().upper() if machine_id else None
+
+    # Check revoked blacklist FIRST (prevents revoked signed keys from auto-reactivating!)
+    if clean_key in get_revoked_keys():
+        conn.close()
+        return False, "This license key has been deactivated or revoked by Admin @kun_amra.", None
 
     cursor.execute("SELECT * FROM licenses WHERE key_code = ?", (clean_key,))
     row = cursor.fetchone()
@@ -294,19 +335,40 @@ def list_licenses():
 
 def revoke_license(key_code: str):
     init_db()
+    clean = key_code.strip().upper()
+    save_revoked_key(clean)
     conn = get_connection()
     with conn:
-        conn.execute("UPDATE licenses SET is_active = 0 WHERE key_code = ?", (key_code.strip(),))
+        conn.execute("UPDATE licenses SET is_active = 0 WHERE key_code = ?", (clean,))
     conn.close()
     return True
 
 def delete_license(key_code: str):
     init_db()
+    clean = key_code.strip().upper()
+    save_revoked_key(clean)
     conn = get_connection()
     with conn:
-        conn.execute("DELETE FROM licenses WHERE key_code = ?", (key_code.strip(),))
+        conn.execute("DELETE FROM licenses WHERE key_code = ?", (clean,))
     conn.close()
     return True
+
+def delete_all_licenses():
+    """Permanently delete all non-VIP licenses and add to blacklist."""
+    init_db()
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT key_code FROM licenses WHERE key_code NOT LIKE 'TGADD-VIP-%'")
+    rows = cursor.fetchall()
+    deleted_count = 0
+    for r in rows:
+        k = r["key_code"]
+        save_revoked_key(k)
+        deleted_count += 1
+    with conn:
+        conn.execute("DELETE FROM licenses WHERE key_code NOT LIKE 'TGADD-VIP-%'")
+    conn.close()
+    return deleted_count
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Telegram Adder License Management CLI")

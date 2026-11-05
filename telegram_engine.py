@@ -314,7 +314,11 @@ def add_or_update_account(acc_data: Dict[str, Any], machine_id: Optional[str] = 
     for i, a in enumerate(accounts):
         if normalize_phone(a.get("phone_number", "")) == norm:
             merged = dict(a)
-            merged.update(acc_data)
+            for k, v in acc_data.items():
+                # Never clobber existing valid session_string with an empty value
+                if k == "session_string" and not v and a.get("session_string"):
+                    continue
+                merged[k] = v
             accounts[i] = merged
             updated = True
             break
@@ -945,7 +949,10 @@ async def fetch_group_members(source_group_link: str, account_phone: Optional[st
 
     if not await client.is_user_authorized():
         await client.disconnect()
-        return False, f"Account {phone} is not authorized. Please re-login.", None
+        chosen_acc["session_string"] = ""
+        chosen_acc["needs_reauth"] = True
+        add_or_update_account(chosen_acc, machine_id)
+        return False, f"Account {phone} is not authorized. Please re-login.", {"unauthorized_phone": phone}
 
     if not chosen_acc.get("session_string"):
         try:
@@ -1120,6 +1127,9 @@ async def run_adding_flow(
             await client.connect()
             if not await client.is_user_authorized():
                 log(f"Account {phone} is not authorized; skipping.", "warning")
+                acc["session_string"] = ""
+                acc["needs_reauth"] = True
+                add_or_update_account(acc, machine_id)
                 await client.disconnect()
                 continue
 
