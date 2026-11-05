@@ -250,28 +250,42 @@ def is_phone_number(text: str) -> bool:
     return candidate.startswith("+") or (candidate.isdigit() and len(candidate) >= 7)
 
 
-def get_session_path(phone: str) -> str:
+def get_accounts_file(machine_id: Optional[str] = None) -> Path:
+    if machine_id and machine_id.strip():
+        safe_mid = re.sub(r"[^\w]", "_", machine_id.strip().upper())
+        return DATA_DIR / f"accounts_{safe_mid}.json"
+    return ACCOUNTS_FILE
+
+
+def get_session_path(phone: str, machine_id: Optional[str] = None) -> str:
     safe_phone = re.sub(r"[^\w]", "_", normalize_phone(phone))
+    if machine_id and machine_id.strip():
+        safe_mid = re.sub(r"[^\w]", "_", machine_id.strip().upper())
+        user_sess_dir = SESSIONS_DIR / safe_mid
+        user_sess_dir.mkdir(parents=True, exist_ok=True)
+        return str(user_sess_dir / safe_phone)
     return str(SESSIONS_DIR / safe_phone)
 
 
-def load_accounts() -> List[Dict[str, Any]]:
-    if not ACCOUNTS_FILE.exists():
+def load_accounts(machine_id: Optional[str] = None) -> List[Dict[str, Any]]:
+    acc_file = get_accounts_file(machine_id)
+    if not acc_file.exists():
         return []
     try:
-        with open(ACCOUNTS_FILE, "r", encoding="utf-8") as f:
+        with open(acc_file, "r", encoding="utf-8") as f:
             return json.load(f)
     except Exception:
         return []
 
 
-def save_accounts(accounts: List[Dict[str, Any]]):
-    with open(ACCOUNTS_FILE, "w", encoding="utf-8") as f:
+def save_accounts(accounts: List[Dict[str, Any]], machine_id: Optional[str] = None):
+    acc_file = get_accounts_file(machine_id)
+    with open(acc_file, "w", encoding="utf-8") as f:
         json.dump(accounts, f, indent=2, ensure_ascii=False)
 
 
-def add_or_update_account(acc_data: Dict[str, Any]):
-    accounts = load_accounts()
+def add_or_update_account(acc_data: Dict[str, Any], machine_id: Optional[str] = None):
+    accounts = load_accounts(machine_id)
     norm = normalize_phone(acc_data.get("phone_number", ""))
     updated = False
     for i, a in enumerate(accounts):
@@ -281,17 +295,17 @@ def add_or_update_account(acc_data: Dict[str, Any]):
             break
     if not updated:
         accounts.append(acc_data)
-    save_accounts(accounts)
+    save_accounts(accounts, machine_id)
     return accounts
 
 
-def delete_account(phone: str) -> bool:
+def delete_account(phone: str, machine_id: Optional[str] = None) -> bool:
     norm = normalize_phone(phone)
-    accounts = load_accounts()
+    accounts = load_accounts(machine_id)
     filtered = [a for a in accounts if normalize_phone(a.get("phone_number", "")) != norm]
-    save_accounts(filtered)
+    save_accounts(filtered, machine_id)
     # Remove session files
-    sess_file = Path(get_session_path(norm) + ".session")
+    sess_file = Path(get_session_path(norm, machine_id) + ".session")
     if sess_file.exists():
         try:
             sess_file.unlink()
@@ -300,14 +314,14 @@ def delete_account(phone: str) -> bool:
     return True
 
 
-def toggle_account_status(phone: str, enabled: bool) -> bool:
+def toggle_account_status(phone: str, enabled: bool, machine_id: Optional[str] = None) -> bool:
     norm = normalize_phone(phone)
-    accounts = load_accounts()
+    accounts = load_accounts(machine_id)
     for a in accounts:
         if normalize_phone(a.get("phone_number", "")) == norm:
             a["enabled"] = enabled
             break
-    save_accounts(accounts)
+    save_accounts(accounts, machine_id)
     return True
 
 
@@ -357,7 +371,7 @@ def _account_from_user(me: Any, api_id: int, api_hash: str, phone: str) -> Dict[
     }
 
 
-async def request_telegram_code(phone: str, api_id: int, api_hash: str):
+async def request_telegram_code(phone: str, api_id: int, api_hash: str, machine_id: Optional[str] = None):
     norm = normalize_phone(phone)
     if not norm:
         return False, "Please enter a valid phone number with country code, e.g. +85517271771.", None
@@ -373,7 +387,7 @@ async def request_telegram_code(phone: str, api_id: int, api_hash: str):
         # If the user clicks "resend", close the previous pending client first.
         await _drop_pending_login(norm)
 
-        client = TelegramClient(get_session_path(norm), api_id, api_hash)
+        client = TelegramClient(get_session_path(norm, machine_id), api_id, api_hash)
         try:
             await client.connect()
 
@@ -381,7 +395,7 @@ async def request_telegram_code(phone: str, api_id: int, api_hash: str):
                 me = await client.get_me()
                 if me:
                     acc = _account_from_user(me, api_id, api_hash, norm)
-                    add_or_update_account(acc)
+                    add_or_update_account(acc, machine_id)
                     return True, "Account is already authorized and connected!", {
                         "already_authorized": True,
                         "account": acc,
@@ -397,6 +411,7 @@ async def request_telegram_code(phone: str, api_id: int, api_hash: str):
                 "phone_code_hash": phone_code_hash,
                 "api_id": api_id,
                 "api_hash": api_hash,
+                "machine_id": machine_id,
                 "created_at": time.time(),
                 "needs_password": False,
                 "delivery": delivery,
@@ -436,6 +451,7 @@ async def verify_telegram_code(
     api_id: Optional[int] = None,
     api_hash: Optional[str] = None,
     password_stage: bool = False,
+    machine_id: Optional[str] = None,
 ):
     norm = normalize_phone(phone)
     if not norm:
@@ -446,6 +462,7 @@ async def verify_telegram_code(
 
     async with _get_login_lock(norm):
         pending = PENDING_LOGINS.get(norm)
+        eff_machine_id = machine_id or (pending.get("machine_id") if pending else None)
 
         # A server restart or a second worker may lose the in-memory entry.
         # Rebuild it from the values the browser already received.
@@ -456,6 +473,7 @@ async def verify_telegram_code(
                     "phone_code_hash": phone_code_hash,
                     "api_id": int(api_id),
                     "api_hash": str(api_hash),
+                    "machine_id": eff_machine_id,
                     "created_at": time.time(),
                     "needs_password": bool(password_stage),
                 }
@@ -465,7 +483,7 @@ async def verify_telegram_code(
                 pending = None
 
         if not pending:
-            accounts = load_accounts()
+            accounts = load_accounts(eff_machine_id)
             existing = next((a for a in accounts if normalize_phone(a.get("phone_number", "")) == norm), None)
             if existing:
                 return True, "Account is already authorized.", {"account": existing}
@@ -483,7 +501,7 @@ async def verify_telegram_code(
 
             client: TelegramClient = pending.get("client")
             if client is None:
-                client = TelegramClient(get_session_path(norm), pending_api_id, pending_api_hash)
+                client = TelegramClient(get_session_path(norm, eff_machine_id), pending_api_id, pending_api_hash)
                 pending["client"] = client
             if not client.is_connected():
                 await client.connect()
@@ -492,7 +510,7 @@ async def verify_telegram_code(
             me = await client.get_me()
             if me:
                 account_entry = _account_from_user(me, pending_api_id, pending_api_hash, norm)
-                add_or_update_account(account_entry)
+                add_or_update_account(account_entry, eff_machine_id)
                 await _drop_pending_login(norm)
                 return True, f"Successfully signed in as {me.first_name or ''} (@{me.username or me.id})!", {
                     "account": account_entry,
@@ -553,7 +571,7 @@ async def verify_telegram_code(
                 }
 
             account_entry = _account_from_user(me, pending_api_id, pending_api_hash, norm)
-            add_or_update_account(account_entry)
+            add_or_update_account(account_entry, eff_machine_id)
             await _drop_pending_login(norm)
             return True, f"Successfully signed in as {me.first_name or ''} (@{me.username or me.id})!", {
                 "account": account_entry,
@@ -620,7 +638,8 @@ def _move_qr_session(entry: Dict[str, Any], phone: str) -> None:
     if not temp_session:
         return
     old_session = Path(str(temp_session) + ".session")
-    target_path = Path(get_session_path(phone) + ".session")
+    mid = entry.get("machine_id")
+    target_path = Path(get_session_path(phone, mid) + ".session")
     if not old_session.exists():
         return
     try:
@@ -635,7 +654,7 @@ def _move_qr_session(entry: Dict[str, Any], phone: str) -> None:
             logger.exception("Could not move QR session file to %s", target_path)
 
 
-async def start_qr_login(api_id: int = DEFAULT_API_ID, api_hash: str = DEFAULT_API_HASH):
+async def start_qr_login(api_id: int = DEFAULT_API_ID, api_hash: str = DEFAULT_API_HASH, machine_id: Optional[str] = None):
     try:
         api_id = int(api_id or DEFAULT_API_ID)
     except Exception:
@@ -658,6 +677,7 @@ async def start_qr_login(api_id: int = DEFAULT_API_ID, api_hash: str = DEFAULT_A
             "qr": qr,
             "api_id": api_id,
             "api_hash": api_hash,
+            "machine_id": machine_id,
             "temp_session": temp_session,
             "status": "waiting",
             "url": qr.url,
@@ -704,7 +724,7 @@ async def _watch_qr_login(qr_id: str):
         entry["temp_session"] = None
 
         account_entry = _account_from_user(user, int(entry["api_id"]), entry["api_hash"], phone)
-        add_or_update_account(account_entry)
+        add_or_update_account(account_entry, entry.get("machine_id"))
 
         entry["status"] = "success"
         entry["account"] = account_entry
@@ -741,12 +761,15 @@ def get_qr_login_status(qr_id: str) -> Dict[str, Any]:
     }
 
 
-async def submit_qr_2fa(qr_id: str, password: str):
+async def submit_qr_2fa(qr_id: str, password: str, machine_id: Optional[str] = None):
     entry = PENDING_QR_LOGINS.get(qr_id)
     if not entry:
         return False, "QR Login session expired or not found. Please refresh and try again.", None
     if entry["status"] != "needs_2fa":
         return False, f"Cannot submit 2FA: session is in {entry['status']} state.", None
+
+    if machine_id:
+        entry["machine_id"] = machine_id
 
     client: TelegramClient = entry["client"]
     try:
@@ -761,7 +784,7 @@ async def submit_qr_2fa(qr_id: str, password: str):
         entry["temp_session"] = None
 
         account_entry = _account_from_user(me, int(entry["api_id"]), entry["api_hash"], phone)
-        add_or_update_account(account_entry)
+        add_or_update_account(account_entry, entry.get("machine_id"))
 
         entry["status"] = "success"
         entry["account"] = account_entry
@@ -849,8 +872,8 @@ async def resolve_group_entity(client: TelegramClient, raw_input: str):
         return target
 
 
-async def fetch_group_members(source_group_link: str, account_phone: Optional[str] = None):
-    accounts = load_accounts()
+async def fetch_group_members(source_group_link: str, account_phone: Optional[str] = None, machine_id: Optional[str] = None):
+    accounts = load_accounts(machine_id)
     active_accounts = [a for a in accounts if a.get("enabled", True)]
     if not active_accounts:
         return False, "No active Telegram accounts connected. Please add or enable an account first.", None
@@ -865,7 +888,7 @@ async def fetch_group_members(source_group_link: str, account_phone: Optional[st
     phone = chosen_acc["phone_number"]
     api_id = int(chosen_acc["api_id"])
     api_hash = chosen_acc["api_hash"]
-    session_path = get_session_path(phone)
+    session_path = get_session_path(phone, machine_id)
 
     client = TelegramClient(session_path, api_id, api_hash)
     await client.connect()
@@ -988,6 +1011,7 @@ async def run_adding_flow(
     delay_seconds: float = 3.0,
     max_per_account: int = 30,
     log_callback: Optional[Callable[[Dict[str, Any]], None]] = None,
+    machine_id: Optional[str] = None,
 ):
     global CURRENT_JOB
 
@@ -1018,7 +1042,7 @@ async def run_adding_flow(
 
     log(f"Initializing Telegram Adder for {len(members)} candidates -> {target_group_link}")
 
-    accounts = load_accounts()
+    accounts = load_accounts(machine_id)
     active_accounts = [a for a in accounts if a.get("enabled", True)]
     if not active_accounts:
         log("No enabled Telegram accounts found! Aborting.", "error")
@@ -1031,7 +1055,7 @@ async def run_adding_flow(
         phone = acc["phone_number"]
         api_id = int(acc["api_id"])
         api_hash = acc["api_hash"]
-        session_path = get_session_path(phone)
+        session_path = get_session_path(phone, machine_id)
         try:
             client = TelegramClient(session_path, api_id, api_hash)
             await client.connect()

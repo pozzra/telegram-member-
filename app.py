@@ -83,6 +83,9 @@ def require_active_license(
     valid, message, details = license_manager.verify_license(x_license_key.strip(), machine_id=x_machine_id)
     if not valid:
         raise HTTPException(status_code=403, detail=f"License Error: {message}")
+    if details is None:
+        details = {}
+    details["machine_id"] = (x_machine_id or details.get("bound_device") or "").strip()
     return details
 
 
@@ -256,11 +259,12 @@ async def system_stats():
 
 
 # ==========================================
-# Telegram Account Management (License Protected)
+# Telegram Account Management (License Protected per Machine ID)
 # ==========================================
 @app.get("/api/accounts")
 async def get_accounts(license: Dict[str, Any] = Depends(require_active_license)):
-    accounts = telegram_engine.load_accounts()
+    mid = license.get("machine_id")
+    accounts = telegram_engine.load_accounts(mid)
     return {
         "success": True,
         "accounts": accounts,
@@ -272,7 +276,8 @@ async def get_accounts(license: Dict[str, Any] = Depends(require_active_license)
 
 @app.post("/api/accounts/request-code")
 async def request_code(req: RequestCodeRequest, license: Dict[str, Any] = Depends(require_active_license)):
-    accounts = telegram_engine.load_accounts()
+    mid = license.get("machine_id")
+    accounts = telegram_engine.load_accounts(mid)
     max_acc = license.get("max_accounts", 50)
     norm = telegram_engine.normalize_phone(req.phone)
     existing_phones = {telegram_engine.normalize_phone(a.get("phone_number", "")) for a in accounts}
@@ -282,7 +287,7 @@ async def request_code(req: RequestCodeRequest, license: Dict[str, Any] = Depend
             detail=f"Account limit reached! Your license allows maximum {max_acc} accounts."
         )
 
-    ok, msg, data = await telegram_engine.request_telegram_code(req.phone, req.api_id, req.api_hash)
+    ok, msg, data = await telegram_engine.request_telegram_code(req.phone, req.api_id, req.api_hash, machine_id=mid)
     if not ok:
         raise HTTPException(status_code=400, detail=msg)
     return {"success": True, "message": msg, "data": data}
@@ -290,6 +295,7 @@ async def request_code(req: RequestCodeRequest, license: Dict[str, Any] = Depend
 
 @app.post("/api/accounts/verify-code")
 async def verify_code(req: VerifyCodeRequest, license: Dict[str, Any] = Depends(require_active_license)):
+    mid = license.get("machine_id")
     ok, msg, data = await telegram_engine.verify_telegram_code(
         req.phone,
         req.code,
@@ -298,6 +304,7 @@ async def verify_code(req: VerifyCodeRequest, license: Dict[str, Any] = Depends(
         api_id=req.api_id,
         api_hash=req.api_hash,
         password_stage=req.password_stage,
+        machine_id=mid,
     )
     if not ok:
         raise HTTPException(status_code=400, detail=msg)
@@ -306,14 +313,15 @@ async def verify_code(req: VerifyCodeRequest, license: Dict[str, Any] = Depends(
 
 @app.post("/api/accounts/qr-login/start")
 async def qr_login_start(req: StartQrLoginRequest, license: Dict[str, Any] = Depends(require_active_license)):
-    accounts = telegram_engine.load_accounts()
+    mid = license.get("machine_id")
+    accounts = telegram_engine.load_accounts(mid)
     max_acc = license.get("max_accounts", 50)
     if len(accounts) >= max_acc:
         raise HTTPException(
             status_code=400,
             detail=f"Account limit reached! Your license allows maximum {max_acc} accounts."
         )
-    ok, msg, data = await telegram_engine.start_qr_login(req.api_id, req.api_hash)
+    ok, msg, data = await telegram_engine.start_qr_login(req.api_id, req.api_hash, machine_id=mid)
     if not ok:
         raise HTTPException(status_code=400, detail=msg)
     return {"success": True, "message": msg, "data": data}
@@ -327,7 +335,8 @@ async def qr_login_status(qr_id: str, license: Dict[str, Any] = Depends(require_
 
 @app.post("/api/accounts/qr-login/2fa")
 async def qr_login_2fa(req: SubmitQr2FaRequest, license: Dict[str, Any] = Depends(require_active_license)):
-    ok, msg, data = await telegram_engine.submit_qr_2fa(req.qr_id, req.password)
+    mid = license.get("machine_id")
+    ok, msg, data = await telegram_engine.submit_qr_2fa(req.qr_id, req.password, machine_id=mid)
     if not ok:
         raise HTTPException(status_code=400, detail=msg)
     return {"success": True, "message": msg, "data": data}
@@ -341,21 +350,24 @@ async def qr_login_close(qr_id: str, license: Dict[str, Any] = Depends(require_a
 
 @app.post("/api/accounts/toggle")
 async def toggle_account(req: ToggleAccountRequest, license: Dict[str, Any] = Depends(require_active_license)):
-    telegram_engine.toggle_account_status(req.phone, req.enabled)
+    mid = license.get("machine_id")
+    telegram_engine.toggle_account_status(req.phone, req.enabled, machine_id=mid)
     return {"success": True, "phone": req.phone, "enabled": req.enabled}
 
 
 @app.delete("/api/accounts/{phone}")
 async def delete_account_route(phone: str, license: Dict[str, Any] = Depends(require_active_license)):
-    telegram_engine.delete_account(phone)
+    mid = license.get("machine_id")
+    telegram_engine.delete_account(phone, machine_id=mid)
     return {"success": True, "message": f"Account {phone} removed."}
 
 
 @app.post("/api/accounts/clear-all")
 async def clear_all_accounts(license: Dict[str, Any] = Depends(require_active_license)):
-    accounts = telegram_engine.load_accounts()
+    mid = license.get("machine_id")
+    accounts = telegram_engine.load_accounts(mid)
     for acc in accounts:
-        telegram_engine.delete_account(acc.get("phone_number", ""))
+        telegram_engine.delete_account(acc.get("phone_number", ""), machine_id=mid)
     return {"success": True, "message": "All accounts cleared."}
 
 
@@ -364,9 +376,10 @@ async def clear_all_accounts(license: Dict[str, Any] = Depends(require_active_li
 # ==========================================
 @app.post("/api/members/scrape")
 async def scrape_members(req: ScrapeRequest, license: Dict[str, Any] = Depends(require_active_license)):
+    mid = license.get("machine_id")
     if not req.source_group.strip():
         raise HTTPException(status_code=400, detail="Source group link or username is required.")
-    ok, msg, data = await telegram_engine.fetch_group_members(req.source_group, req.account_phone)
+    ok, msg, data = await telegram_engine.fetch_group_members(req.source_group, req.account_phone, machine_id=mid)
     if not ok:
         raise HTTPException(status_code=400, detail=msg)
     return {"success": True, "message": msg, "data": data}
@@ -374,6 +387,7 @@ async def scrape_members(req: ScrapeRequest, license: Dict[str, Any] = Depends(r
 
 @app.post("/api/members/start-add")
 async def start_add_members(req: StartAddRequest, license: Dict[str, Any] = Depends(require_active_license)):
+    mid = license.get("machine_id")
     if telegram_engine.CURRENT_JOB["is_running"]:
         raise HTTPException(status_code=400, detail="An adding job is already running! Please stop it first.")
 
@@ -392,6 +406,7 @@ async def start_add_members(req: StartAddRequest, license: Dict[str, Any] = Depe
             delay_seconds=req.delay,
             max_per_account=req.max_per_account,
             log_callback=engine_event_callback,
+            machine_id=mid,
         )
     )
 
