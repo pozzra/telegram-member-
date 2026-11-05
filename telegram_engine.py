@@ -736,6 +736,7 @@ async def start_qr_login(api_id: int = DEFAULT_API_ID, api_hash: str = DEFAULT_A
             "account": None,
         }
         PENDING_QR_LOGINS[qr_id] = entry
+        _save_qr_status_to_disk(qr_id, entry)
         asyncio.create_task(_watch_qr_login(qr_id))
         return True, "QR login initiated. Open Telegram on your phone and confirm the login.", {
             "qr_id": qr_id,
@@ -832,21 +833,67 @@ async def _watch_qr_login(qr_id: str):
     if entry.get("status") not in ("success", "needs_2fa"):
         entry["status"] = "expired"
         entry["error"] = "QR code expired. Please click Refresh QR Code."
+    _save_qr_status_to_disk(qr_id, entry)
+
+
+PENDING_QR_FILE = DATA_DIR / "pending_qr_status.json"
+
+def _save_qr_status_to_disk(qr_id: str, data: Dict[str, Any]):
+    try:
+        all_status = {}
+        if PENDING_QR_FILE.exists():
+            try:
+                all_status = json.loads(PENDING_QR_FILE.read_text(encoding="utf-8"))
+            except Exception:
+                pass
+        now = time.time()
+        # Prune entries older than 10 minutes
+        all_status = {k: v for k, v in all_status.items() if now - float(v.get("_saved_at", now)) < 600}
+        all_status[qr_id] = {
+            "status": data.get("status", "waiting"),
+            "error": data.get("error"),
+            "account": data.get("account"),
+            "phone": data.get("phone"),
+            "expires_at": data.get("expires_at"),
+            "url": data.get("url"),
+            "qr_image": data.get("qr_image"),
+            "_saved_at": now
+        }
+        PENDING_QR_FILE.write_text(json.dumps(all_status, ensure_ascii=False), encoding="utf-8")
+    except Exception as e:
+        logger.debug("Failed to persist QR status: %s", e)
+
+def _load_qr_status_from_disk(qr_id: str) -> Optional[Dict[str, Any]]:
+    try:
+        if PENDING_QR_FILE.exists():
+            all_status = json.loads(PENDING_QR_FILE.read_text(encoding="utf-8"))
+            return all_status.get(qr_id)
+    except Exception:
+        pass
+    return None
 
 
 def get_qr_login_status(qr_id: str) -> Dict[str, Any]:
     entry = PENDING_QR_LOGINS.get(qr_id)
-    if not entry:
-        return {"status": "not_found", "error": "Session not found or expired."}
-    return {
-        "status": entry.get("status", "waiting"),
-        "error": entry.get("error"),
-        "account": entry.get("account"),
-        "phone": entry.get("phone"),
-        "expires_at": entry.get("expires_at"),
-        "url": entry.get("url"),
-        "qr_image": entry.get("qr_image"),
-    }
+    if entry:
+        res = {
+            "status": entry.get("status", "waiting"),
+            "error": entry.get("error"),
+            "account": entry.get("account"),
+            "phone": entry.get("phone"),
+            "expires_at": entry.get("expires_at"),
+            "url": entry.get("url"),
+            "qr_image": entry.get("qr_image"),
+        }
+        _save_qr_status_to_disk(qr_id, res)
+        return res
+
+    # Check shared disk cache for multi-worker and serverless resilience
+    disk_entry = _load_qr_status_from_disk(qr_id)
+    if disk_entry:
+        return disk_entry
+
+    return {"status": "not_found", "error": "Session not found or expired."}
 
 
 async def submit_qr_2fa(qr_id: str, password: str, machine_id: Optional[str] = None):

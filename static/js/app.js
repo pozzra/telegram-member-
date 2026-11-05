@@ -879,6 +879,8 @@ function openAddAccountModal() {
 
 function cancelQrSession(qrId) {
     if (!qrId) return;
+    // Guard: never cancel the active session that is currently in use
+    if (qrId === currentQrId) return;
     fetch(`${API_BASE}/api/accounts/qr-login/close/${encodeURIComponent(qrId)}`, {
         method: "POST",
         headers: getAuthHeaders(),
@@ -1024,6 +1026,7 @@ function stopQrPolling() {
 
 function startPollingQrStatus(qrId) {
     stopQrPolling();
+    let notFoundCount = 0;
 
     qrPollTimer = setInterval(async () => {
         try {
@@ -1045,6 +1048,7 @@ function startPollingQrStatus(qrId) {
 
             const st = data.data;
             if (st.status === "waiting") {
+                notFoundCount = 0;
                 if (st.qr_image) {
                     const qrImg = document.getElementById("qrCodeImg");
                     if (qrImg && qrImg.src !== st.qr_image) qrImg.src = st.qr_image;
@@ -1105,10 +1109,29 @@ function startPollingQrStatus(qrId) {
                         : "QR expired. Please click Refresh QR Code.";
                 }
             } else if (st.status === "not_found") {
+                notFoundCount++;
+                if (notFoundCount <= 3) {
+                    // Multi-worker handover: keep polling before declaring closed
+                    return;
+                }
                 stopQrPolling();
-                const statusMsg = document.getElementById("txtQrStatusMsg");
-                if (statusMsg) {
-                    statusMsg.innerText = "This QR session was closed. Click Refresh QR Code to start again.";
+                const modalOpen = !document.getElementById("addAccountModal").classList.contains("hidden");
+                if (modalOpen && qrAutoRefreshCount < 10) {
+                    qrAutoRefreshCount += 1;
+                    const statusMsg = document.getElementById("txtQrStatusMsg");
+                    if (statusMsg) {
+                        statusMsg.innerText = currentLanguage === "km"
+                            ? "កំពុងបង្កើត QR Code ថ្មីឡើងវិញដោយស្វ័យប្រវត្តិ..."
+                            : "Auto-reconnecting fresh QR code...";
+                    }
+                    setTimeout(() => startQrLogin(true), 1000);
+                } else {
+                    const statusMsg = document.getElementById("txtQrStatusMsg");
+                    if (statusMsg) {
+                        statusMsg.innerText = currentLanguage === "km"
+                            ? "QR Code បានបិទ! សូមចុច Refresh QR Code ដើម្បីចាប់ផ្តើមម្តងទៀត"
+                            : "This QR session was closed. Click Refresh QR Code to start again.";
+                    }
                 }
             } else if (st.status === "error") {
                 stopQrPolling();
