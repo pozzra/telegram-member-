@@ -1148,15 +1148,30 @@ async def invite_single_member(
     except Exception as exc:
         return {"success": False, "status": "connect_failed", "message": f"Could not connect account {phone}: {exc}", "phone": phone}
 
-    if not await client.is_user_authorized():
+    # Check authorization; retry once with fresh connection if needed
+    authorized = await client.is_user_authorized()
+    if not authorized:
+        # Try a fresh reconnect once before declaring unauthorized
         WARM_CLIENTS.pop(phone, None)
         try:
             await client.disconnect()
         except Exception:
             pass
-        account["session_string"] = ""
-        account["needs_reauth"] = True
-        add_or_update_account(account, machine_id)
+        try:
+            client = await get_or_create_worker_client(account, machine_id)
+            authorized = await client.is_user_authorized()
+        except Exception:
+            authorized = False
+
+    if not authorized:
+        WARM_CLIENTS.pop(phone, None)
+        try:
+            await client.disconnect()
+        except Exception:
+            pass
+        # Only mark needs_reauth on server; do NOT clear session_string here
+        # so the client can still attempt re-login from their cached session
+        add_or_update_account({"phone_number": phone, "needs_reauth": True}, machine_id)
         return {
             "success": False,
             "status": "unauthorized",

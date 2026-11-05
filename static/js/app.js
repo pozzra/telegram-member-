@@ -557,7 +557,25 @@ async function loadAccounts() {
         if (data.success) {
             const serverAccounts = data.accounts || [];
             if (serverAccounts.length > 0) {
-                currentAccounts = serverAccounts;
+                // Merge server accounts with localStorage — keep session_string from cache if server lost it
+                const cachedRaw = localStorage.getItem(getAccountsStorageKey());
+                let cachedMap = {};
+                if (cachedRaw) {
+                    try {
+                        const cached = JSON.parse(cachedRaw);
+                        if (Array.isArray(cached)) {
+                            cached.forEach(a => { if (a.phone_number) cachedMap[a.phone_number] = a; });
+                        }
+                    } catch (e) {}
+                }
+                currentAccounts = serverAccounts.map(acc => {
+                    const cached = cachedMap[acc.phone_number];
+                    if (cached && cached.session_string && !acc.session_string) {
+                        // Restore session_string from localStorage if server doesn't have it
+                        return Object.assign({}, acc, { session_string: cached.session_string });
+                    }
+                    return acc;
+                });
                 saveAccountsToLocalStorage(currentAccounts);
             } else {
                 // If server accounts are empty (e.g. server restart), check localStorage cache
@@ -1673,9 +1691,9 @@ async function startAddingMembers() {
             } else if (data.status === "unauthorized") {
                 skippedCount++;
                 breakdown[phone].status = "unauthorized";
-                logConsole(`⚠️ Account ${phone} is not authorized. Please re-login.`, "error");
+                logConsole(`⚠️ Account ${phone} session expired — please Re-login this account.`, "error");
+                // Mark needs_reauth but DO NOT clear session_string — let user re-login manually
                 worker.needs_reauth = true;
-                worker.session_string = "";
                 saveAccountsToLocalStorage(currentAccounts);
                 renderAccounts(currentAccounts);
             } else if (data.status === "no_admin") {
@@ -1732,7 +1750,6 @@ async function stopAddingMembers() {
             btnStop.innerHTML = `<i class="fas fa-stop"></i> <span id="btnStopText">${I18N[currentLanguage].btnStopText}</span>`;
         }
     }, 1000);
-}
 }
 
 // ==========================================
