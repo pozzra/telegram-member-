@@ -1496,7 +1496,13 @@ async function fetchSourceMembers() {
                 accounts_override: currentAccounts
             })
         });
-        const data = await res.json();
+        // Safe JSON parse - server may return HTML on cold-start/timeout
+        let data;
+        try {
+            data = await res.json();
+        } catch (_jsonErr) {
+            throw new Error("Server returned non-JSON response. The backend may be starting up - please wait 30 seconds and try again.");
+        }
 
         if (res.ok && data.success) {
             const fetched = data.data.members || [];
@@ -1704,7 +1710,17 @@ async function startAddingMembers() {
                     accounts_override: currentAccounts
                 })
             });
-            const data = await res.json();
+            // Safe JSON parse - backend may return HTML on cold-start/timeout
+            let data;
+            try {
+                data = await res.json();
+            } catch (_jsonErr) {
+                skippedCount++;
+                logConsole(`⚠️ Backend returned non-JSON for ${candidate}. Server starting up? Retrying next...`, "warning");
+                document.getElementById("statSkipped").innerText = skippedCount;
+                await new Promise(r => setTimeout(r, 3000));
+                continue;
+            }
 
             if (res.ok && data.success && data.status === "added") {
                 addedCount++;
@@ -1712,11 +1728,12 @@ async function startAddingMembers() {
                 logConsole(data.message, "success");
             } else if (data.status === "peer_flood" || data.status === "flood_wait") {
                 skippedCount++;
-                breakdown[phone].status = "limited";
+                // Set status "flood_wait" so next availableWorkers filter excludes this account
+                breakdown[phone].status = "flood_wait";
                 worker.spam_flagged = true;
                 const secs = data.seconds || 0;
                 const waitLabel = secs > 60 ? `${Math.ceil(secs / 60)}m (${secs}s)` : `${secs}s`;
-                logConsole(`⚠️ Account ${phone} hit Telegram Flood limit (${waitLabel}). Pausing worker.`, "warning");
+                logConsole(`⚠️ Account ${phone} hit Telegram Flood Wait (${waitLabel}). Account paused automatically.`, "warning");
                 saveAccountsToLocalStorage(currentAccounts);
                 renderAccounts(currentAccounts);
 
@@ -1726,37 +1743,31 @@ async function startAddingMembers() {
                     return !a.spam_flagged && !a.needs_reauth && b && b.status === "ready" && (a.is_premium || b.invites_done < maxPerAcc);
                 });
                 if (remainingWorkers.length === 0) {
+                    isJobRunning = false;
                     const stopMsg = currentLanguage === "km"
-                        ? `⚠️ គណនី Telegram ទាំងអស់បានជាប់ Flood Wait របស់ Telegram (${waitLabel})។ ប្រព័ន្ធបានផ្អាកដោយស្វ័យប្រវត្តិដើម្បីការពារគណនីរបស់អ្នក។`
-                        : `⚠️ All accounts hit Telegram Flood Wait (${waitLabel}). Adder stopped automatically to protect your Telegram account.`;
+                        ? `⚠️ គណានី Telegram តាមែអស់បានជាប់ Flood Wait របស់ Telegram (${waitLabel})។ ប្រព័ន្ធបានផ័យកតតឹយស្វ័យប្រវតឹតីតារការបអូតគណាន!`
+                        : `⚠️ All accounts hit Telegram Flood Wait (${waitLabel}). Adder stopped to protect your accounts!`;
                     logConsole(stopMsg, "error");
                     alert(stopMsg);
                     break;
                 }
+                // Else continue to next member - remaining workers will be used automatically
             } else if (data.status === "unauthorized" || data.status === "auth_key_duplicated") {
                 skippedCount++;
                 breakdown[phone].status = "unauthorized";
                 worker.needs_reauth = true;
                 saveAccountsToLocalStorage(currentAccounts);
                 renderAccounts(currentAccounts);
-                const alertMsg = currentLanguage === "km"
-                    ? `⚠️ គណនី ${phone} ត្រូវបាន Telegram កាត់ផ្តាច់ (Session ផុតកំណត់ ឬប្រើលើ IP ផ្សេងគ្នា)។ សូមចុច Re-login គណនីនេះឡើងវិញ!`
-                    : `⚠️ Account ${phone} session expired or revoked by Telegram. Please Re-login this account!`;
-                logConsole(alertMsg, "error");
-                alert(alertMsg);
-                break;
+                logConsole(`⚠️ Account ${phone} session expired/revoked by Telegram. Switching to next account...`, "warning");
+                // Don't break - continue adding with other available accounts
             } else if (data.status === "connect_failed") {
                 skippedCount++;
-                breakdown[phone].status = "unauthorized";
+                breakdown[phone].status = "connect_failed";
                 worker.needs_reauth = true;
                 saveAccountsToLocalStorage(currentAccounts);
                 renderAccounts(currentAccounts);
-                const alertMsg = currentLanguage === "km"
-                    ? `⚠️ មិនអាចតភ្ជាប់គណនី ${phone} បានទេ: ${data.message || 'សូមពិនិត្យមើលគណនី ឬ Re-login'}`
-                    : `⚠️ Could not connect account ${phone}: ${data.message || 'Please check or re-login'}`;
-                logConsole(alertMsg, "error");
-                alert(alertMsg);
-                break;
+                logConsole(`⚠️ Could not connect ${phone}: ${data.message || "Session issue"}. Switching account...`, "warning");
+                // Don't break - continue adding with other available accounts
             } else if (data.status === "privacy_restricted") {
                 skippedCount++;
                 logConsole(data.message || `⚠️ Skipped ${candidate} (User privacy settings block stranger invites)`, "warning");
