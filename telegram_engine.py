@@ -1186,11 +1186,17 @@ async def run_adding_flow(
                 continue
 
             # Skip deleted accounts
-            user_full = f"{getattr(user, 'first_name', '') or ''} {getattr(user, 'last_name', '') or ''}".strip().casefold()
+            first = getattr(user, 'first_name', '') or ''
+            last  = getattr(user, 'last_name',  '') or ''
+            uname = getattr(user, 'username',   '') or ''
+            display_name = f"{first} {last}".strip() or uname or str(getattr(user, 'id', member))
+            user_label   = f"{display_name} (@{uname})" if uname else display_name
+
+            user_full = f"{first} {last}".strip().casefold()
             if getattr(user, "deleted", False) or "deleted account" in user_full:
                 skipped_count += 1
                 CURRENT_JOB["skipped_count"] = skipped_count
-                log(f"{member} is a deleted account; skipping.", "warning")
+                log(f"{user_label} is a deleted account; skipping.", "warning")
                 continue
 
             # Check if already participant
@@ -1198,7 +1204,7 @@ async def run_adding_flow(
                 await client(GetParticipantRequest(target_group, user.id))
                 skipped_count += 1
                 CURRENT_JOB["skipped_count"] = skipped_count
-                log(f"{member} is already in the target group; skipping.", "info")
+                log(f"{user_label} is already in the target group; skipping.", "info")
                 continue
             except UserNotParticipantError:
                 pass
@@ -1214,7 +1220,7 @@ async def run_adding_flow(
                     worker["invites_done"] += 1
                     CURRENT_JOB["added_count"] = added_count
                     CURRENT_JOB["worker_breakdown"][phone]["invites_done"] = worker["invites_done"]
-                    log(f"Successfully invited {member} via {phone}{prem_tag} (Total: {added_count})", "success")
+                    log(f"✅ Invited {user_label} via {phone}{prem_tag} (Total: {added_count})", "success")
                     await asyncio.sleep(delay_seconds)
                     break
                 except PeerFloodError:
@@ -1235,12 +1241,12 @@ async def run_adding_flow(
                             alt["invites_done"] += 1
                             CURRENT_JOB["added_count"] = added_count
                             CURRENT_JOB["worker_breakdown"][alt["phone"]]["invites_done"] = alt["invites_done"]
-                            log(f"Successfully invited {member} via failover {alt['phone']}", "success")
+                            log(f"✅ Invited {user_label} via failover {alt['phone']}", "success")
                             await asyncio.sleep(delay_seconds)
                         except Exception as e:
                             skipped_count += 1
                             CURRENT_JOB["skipped_count"] = skipped_count
-                            log(f"Failover invite failed for {member}: {e}", "warning")
+                            log(f"Failover invite failed for {user_label}: {e}", "warning")
                     else:
                         skipped_count += 1
                         CURRENT_JOB["skipped_count"] = skipped_count
@@ -1260,7 +1266,7 @@ async def run_adding_flow(
                 except UserAlreadyParticipantError:
                     skipped_count += 1
                     CURRENT_JOB["skipped_count"] = skipped_count
-                    log(f"{member} is already a member.", "info")
+                    log(f"{user_label} is already a member.", "info")
                     break
                 except (
                     UserPrivacyRestrictedError,
@@ -1272,7 +1278,7 @@ async def run_adding_flow(
                 ) as exc:
                     skipped_count += 1
                     CURRENT_JOB["skipped_count"] = skipped_count
-                    log(f"Cannot invite {member} (Privacy or restricted): {exc}", "warning")
+                    log(f"⚠️ Cannot invite {user_label} (Privacy/restricted): {exc}", "warning")
                     break
                 except ChatAdminRequiredError:
                     worker["status"] = "no_admin"
@@ -1284,7 +1290,7 @@ async def run_adding_flow(
                 except Exception as exc:
                     skipped_count += 1
                     CURRENT_JOB["skipped_count"] = skipped_count
-                    log(f"Failed to invite {member}: {exc}", "error")
+                    log(f"❌ Failed to invite {user_label}: {exc}", "error")
                     break
 
         CURRENT_JOB["progress"] = 100
