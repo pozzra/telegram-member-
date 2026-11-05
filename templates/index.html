@@ -5,6 +5,10 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Telegram Adder Pro - Web Edition</title>
+    <!-- Defensive Polyfill for Tailwind CDN crypto in non-HTTPS / restricted contexts -->
+    <script>
+        if (typeof window !== "undefined" && !window.crypto) { window.crypto = {}; }
+    </script>
     <!-- Tailwind CSS (CDN) -->
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- Font Awesome Icons -->
@@ -761,7 +765,7 @@
     </div>
 
     <!-- App JavaScript with Cache Busting -->
-    <script src="/static/js/app.js"></script>
+    <script src="/static/js/app.js?v=2.0.6"></script>
 </body>
 
 </html>

@@ -118,16 +118,41 @@ When a user activates a time-limited license:
 
 ---
 
-## 4. Hosting on Vercel
+## 4. Free Server Hosting Options
 
-The project is pre-configured for **Vercel** serverless hosting.
+### Option A: Render.com (Recommended Free Cloud Hosting - Supports WebSockets & Persistent Tasks)
+
+Render gives you 750 hours/month of **Free Web Service** with real Python support, WebSockets, and background workers.
+
+1. Go to [render.com](https://render.com) and sign in with GitHub.
+2. Click **New +** → **Blueprint** (or **Web Service**).
+3. Connect your GitHub repository (`https://github.com/pozzra/telegram-member-`).
+4. Render will automatically detect [`render.yaml`](file:///c:/Users/PC/Desktop/telegram%20adder%20web/render.yaml) and configure:
+   - **Build Command:** `pip install -r requirements.txt`
+   - **Start Command:** `uvicorn app:app --host 0.0.0.0 --port $PORT`
+5. Click **Apply / Deploy**. Your app will be live at `https://your-service-name.onrender.com` for free!
+
+---
+
+### Option B: Free Instant Public HTTPS URL (From Your PC)
+
+If you run the app locally on your PC, you can expose it to the internet with a free HTTPS URL in one click:
+
+1. Double-click [`run_web.bat`](file:///c:/Users/PC/Desktop/telegram%20adder%20web/run_web.bat) to start the local server.
+2. Double-click [`run_free_online_tunnel.bat`](file:///c:/Users/PC/Desktop/telegram%20adder%20web/run_free_online_tunnel.bat).
+3. It creates a secure public HTTPS link (e.g., `https://random-name.loca.lt`) instantly for free!
+
+---
+
+### Option C: Hosting on Vercel
+
+The project is pre-configured for **Vercel** serverless hosting in [`vercel.json`](file:///c:/Users/PC/Desktop/telegram%20adder%20web/vercel.json):
 
 | File | Purpose |
 |------|---------|
-| `vercel.json` | Routes all traffic to `@vercel/python`; serves `/static/` directly |
+| `vercel.json` | Routes all traffic and static assets to `@vercel/python` |
 | `api/index.py` | Serverless ASGI entrypoint that imports the FastAPI `app` |
-| `telegram_engine.py` / `license_manager.py` | Auto-detect `VERCEL` env var; use `/tmp/data` and `/tmp/sessions` on the read-only filesystem |
-| `app.py` | Skips WebSocket route on Vercel (not supported on serverless); exposes `/api/health` |
+| `telegram_engine.py` / `license_manager.py` | Auto-detect `VERCEL` env var; use `/tmp/data` and `/tmp/sessions` |
 
 ### Deploy to Vercel
 

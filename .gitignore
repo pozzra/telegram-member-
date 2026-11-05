@@ -5,9 +5,12 @@ __pycache__/
 *.session-journal
 sessions/
 data/*.db
+data/accounts.json
 data/bot_data.json
 data/pending_logins.json
 server.log
+server.err.log
+*.log
 .env
 .DS_Store
 

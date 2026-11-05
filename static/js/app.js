@@ -1410,13 +1410,16 @@ async function stopAddingMembers() {
 }
 
 // ==========================================
-// WebSocket Real-Time Events
+// WebSocket Real-Time Events & Fallback Polling
 // ==========================================
+let jobStatusPoller = null;
+
 function initWebSocket() {
-    // Vercel/serverless hosting does not support WebSockets. Skip entirely on production domains.
-    const hostname = window.location.hostname;
-    const isProduction = hostname && hostname !== "127.0.0.1" && hostname !== "localhost";
-    if (isProduction) {
+    const hostname = window.location.hostname || "";
+    // Only Vercel serverless lacks WebSocket support entirely
+    const isVercel = hostname.endsWith(".vercel.app");
+    if (isVercel) {
+        startJobStatusFallbackPoller();
         return;
     }
 
@@ -1430,11 +1433,16 @@ function initWebSocket() {
     try {
         websocket = new WebSocket(wsUrl);
     } catch (e) {
+        startJobStatusFallbackPoller();
         return;
     }
 
     websocket.onopen = () => {
         wsEverOpened = true;
+        if (jobStatusPoller) {
+            clearInterval(jobStatusPoller);
+            jobStatusPoller = null;
+        }
     };
 
     websocket.onmessage = (event) => {
@@ -1447,11 +1455,43 @@ function initWebSocket() {
     };
 
     websocket.onclose = () => {
-        // Only auto-reconnect if the socket was ever opened (avoid endless retry on serverless)
+        // Fallback polling if WebSocket closes or fails
+        if (isJobRunning && !jobStatusPoller) {
+            startJobStatusFallbackPoller();
+        }
         if (wsEverOpened) {
-            setTimeout(initWebSocket, 2000);
+            setTimeout(initWebSocket, 2500);
         }
     };
+
+    websocket.onerror = () => {
+        if (!wsEverOpened) {
+            startJobStatusFallbackPoller();
+        }
+    };
+}
+
+function startJobStatusFallbackPoller() {
+    if (jobStatusPoller) return;
+    jobStatusPoller = setInterval(async () => {
+        if (!isJobRunning) return;
+        try {
+            const res = await fetch(`${API_BASE}/api/members/status`, {
+                headers: getAuthHeaders()
+            });
+            if (res.ok) {
+                const data = await res.json();
+                if (data && data.job) {
+                    handleWsMessage({ type: "progress", data: data.job });
+                    if (!data.job.is_running && isJobRunning) {
+                        handleWsMessage({ type: "finished", data: data.job });
+                    }
+                }
+            }
+        } catch (e) {
+            // ignore network glitch
+        }
+    }, 2000);
 }
 
 function handleWsMessage(msg) {
