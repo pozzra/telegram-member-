@@ -48,6 +48,21 @@ if sys.platform == "win32":
         pass
 
 import httpx
+import socket
+
+# ─── Single-Instance Process Lock ─────────────────────────
+_bot_lock_socket = None
+
+def acquire_single_instance_lock(port: int = 29876) -> bool:
+    """Ensure only one bot instance runs on this machine to prevent duplicate messages."""
+    global _bot_lock_socket
+    try:
+        _bot_lock_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        _bot_lock_socket.bind(("127.0.0.1", port))
+        _bot_lock_socket.listen(1)
+        return True
+    except socket.error:
+        return False
 
 # ─── Path setup ───────────────────────────────────────────
 ROOT_DIR = Path(__file__).resolve().parent
@@ -215,11 +230,23 @@ async def on_start(client, msg: dict):
     admin_env_id = os.environ.get("ADMIN_CHAT_ID", "").strip()
     is_admin = (admin_env_id and chat_id == admin_env_id) or (username == ADMIN_USERNAME.lower())
 
-    # Auto-register admin
+    # Check if /start was clicked with a Machine ID parameter (e.g. /start MID_A3F9C2B1_XK7Q2M)
+    raw_text = (msg.get("text") or "").strip()
+    parts = raw_text.split()
+    if len(parts) > 1:
+        param = parts[1].replace("_", "-")
+        match = MID_RE.search(param)
+        if match:
+            await on_machine_id(client, msg, match.group(0).upper())
+            return
+
+    # Auto-register admin if no Machine ID was requested
     if is_admin:
-        bot_state["admin_chat_id"] = chat_id
-        save_bot_data(bot_state)
-        pending_count = len(bot_state.get("pending", {}))
+        state = load_bot_data()
+        state["admin_chat_id"] = chat_id
+        save_bot_data(state)
+        bot_state.update(state)
+        pending_count = len(state.get("pending", {}))
         total_keys = len(license_manager.list_licenses())
         await send(client, chat_id,
             f"👑 <b>Admin Registered!</b>\n\n"
@@ -236,16 +263,6 @@ async def on_start(client, msg: dict):
             f"Users who submit their Machine ID will appear here with 1-click approval buttons. ✅"
         )
         return
-
-    # Check if /start was clicked with a Machine ID parameter (e.g. /start MID_A3F9C2B1_XK7Q2M)
-    raw_text = (msg.get("text") or "").strip()
-    parts = raw_text.split()
-    if len(parts) > 1:
-        param = parts[1].replace("_", "-")
-        match = MID_RE.search(param)
-        if match:
-            await on_machine_id(client, msg, match.group(0).upper())
-            return
 
     await send(client, chat_id,
         f"🤖 <b>Telegram Adder Pro — License Bot</b>\n\n"
@@ -267,39 +284,63 @@ async def on_machine_id(client, msg: dict, machine_id: str):
     fname = user.get("first_name", "") or ""
     lname = user.get("last_name", "") or ""
     name = f"{fname} {lname}".strip() or username or "Unknown User"
+    now_ts = int(time.time())
 
-    # Check if already has a pending request
-    pending = bot_state.setdefault("pending", {})
+    # Always reload fresh state from disk
+    state = load_bot_data()
+    pending = state.setdefault("pending", {})
+
+    # 1. Debounce: if this machine ID was requested in the last 3 minutes (180s), do not duplicate!
     already = pending.get(machine_id)
     if already:
-        if already.get("user_chat_id") == chat_id:
+        last_ts = int(already.get("timestamp") or 0)
+        if (now_ts - last_ts) < 180:
             await send(client, chat_id,
-                f"⏳ Your request for <code>{machine_id}</code> is already pending.\n"
-                f"Please wait for admin to process it.\n\n"
+                f"⏳ <b>Request already received!</b>\n\n"
+                f"Your request for <code>{machine_id}</code> is already waiting for admin review.\n"
+                f"Please wait a moment — Admin has already received your request! 🔔\n\n"
                 f"Contact: @{ADMIN_USERNAME}"
             )
             return
+
+    # 2. Check if this machine already has an active valid license
+    existing_licenses = license_manager.list_licenses()
+    active_for_mid = next(
+        (lic for lic in existing_licenses if lic.get("bound_device") == machine_id and lic.get("is_active")),
+        None
+    )
+    if active_for_mid:
+        key = active_for_mid["key_code"]
+        exp = active_for_mid.get("expires_at") or "Lifetime"
+        await send(client, chat_id,
+            f"ℹ️ <b>Machine Already Licensed!</b>\n\n"
+            f"Machine ID <code>{machine_id}</code> already has an active license:\n"
+            f"🔑 <code>{key}</code>\n"
+            f"⏳ Expires: <b>{exp}</b>\n\n"
+            f"You can enter this key directly into your web dashboard!"
+        )
+        return
 
     # Store pending request
     pending[machine_id] = {
         "user_chat_id": chat_id,
         "user_name": name,
         "username": username,
-        "timestamp": int(time.time()),
+        "timestamp": now_ts,
     }
-    save_bot_data(bot_state)
+    save_bot_data(state)
+    bot_state.update(state)
 
-    # Confirm receipt to user
+    # Confirm receipt to user (exactly 1 confirmation)
     await send(client, chat_id,
         f"✅ <b>Machine ID Received!</b>\n\n"
         f"🖥️ Your Machine ID:\n<code>{machine_id}</code>\n\n"
-        f"Your request has been forwarded to the admin for review.\n"
-        f"You will receive your license key here shortly. 🔑\n\n"
-        f"💬 Admin: @{ADMIN_USERNAME}"
+        f"Your request has been forwarded to Admin @{ADMIN_USERNAME}.\n"
+        f"You will receive your license key here as soon as approved! 🔑"
     )
 
-    # Notify admin
-    admin_id = bot_state.get("admin_chat_id", "")
+    # Notify admin (exactly 1 notification)
+    admin_id = state.get("admin_chat_id", "") or bot_state.get("admin_chat_id", "")
     if not admin_id:
         log.warning("Admin chat_id not registered! Admin must send /start to the bot.")
         return
@@ -308,7 +349,7 @@ async def on_machine_id(client, msg: dict, machine_id: str):
     ts = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
 
     await send(client, admin_id,
-        f"🔔 <b>New License Request</b>\n\n"
+        f"🔔 <b>New License Request</b> (1)\n\n"
         f"👤 User: <b>{name}</b> ({user_link})\n"
         f"🖥️ Machine ID: <code>{machine_id}</code>\n"
         f"🕐 Requested: {ts}\n\n"
@@ -728,6 +769,11 @@ async def run_bot():
 
 
 if __name__ == "__main__":
+    if not acquire_single_instance_lock():
+        print("[WARN] Another instance of License Bot is already running on this machine.")
+        print("[INFO] Exiting duplicate bot process to prevent duplicate admin requests.")
+        sys.exit(0)
+
     license_manager.init_db()
     try:
         asyncio.run(run_bot())
