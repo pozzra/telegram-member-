@@ -157,6 +157,8 @@ const I18N = {
         txtScanInstruction: "Telegram > Settings > Devices > Link Desktop Device",
         txtScanSub: "Scan this QR code, or click the button below to confirm directly",
         txtOpenTgBtn: "Open Telegram App to Confirm",
+        txtOpenTgApp: "👉 Open & Confirm in Telegram Directly",
+        txtOpenTgAppHint: "Using phone? Tap button above to open Telegram app directly — no scanning needed!",
         txtQrStatusMsg: "Waiting for confirmation in Telegram...",
         txtRefreshQr: "Refresh QR Code",
         emptyAccounts: "No Telegram accounts connected yet.<br>Click '+ Add Account' to connect your first session."
@@ -211,6 +213,8 @@ const I18N = {
         txtScanInstruction: "Telegram > ការកំណត់ > ឧបករណ៍ > ភ្ជាប់ឧបករណ៍កុំព្យូទ័រ",
         txtScanSub: "ស្កេន QR Code នេះ ឬចុចប៊ូតុងខាងក្រោមដើម្បី Confirm ភ្លាមៗ",
         txtOpenTgBtn: "បើកកម្មវិធី Telegram ដើម្បី Confirm",
+        txtOpenTgApp: "👉 ចុចទីនេះដើម្បី Login ក្នុង Telegram ផ្ទាល់ (សម្រាប់ទូរស័ព្ទ)",
+        txtOpenTgAppHint: "បើអ្នកកំពុងប្រើទូរស័ព្ទ ចុចប៊ូតុងខាងលើ Telegram នឹងបើកភ្លាមៗដើម្បីបញ្ជាក់ការ Login!",
         txtQrStatusMsg: "កំពុងរង់ចាំអ្នកចុច Confirm លើ Telegram...",
         txtRefreshQr: "បង្កើត QR Code ថ្មី",
         emptyAccounts: "មិនទាន់មានគណនី Telegram ណាត្រូវបានភ្ជាប់នៅឡើយទេ។<br>សូមចុច '+ បន្ថែមគណនី' ដើម្បី Login។"
@@ -1016,9 +1020,29 @@ function startPollingQrStatus(qrId) {
             if (!data.success || !data.data) return;
 
             const st = data.data;
-            if (st.status === "success") {
+            if (st.status === "waiting") {
+                if (st.qr_image) {
+                    const qrImg = document.getElementById("qrCodeImg");
+                    if (qrImg && qrImg.src !== st.qr_image) qrImg.src = st.qr_image;
+                }
+                if (st.url) {
+                    const btnOpen = document.getElementById("btnOpenTgLink");
+                    if (btnOpen) btnOpen.href = st.url;
+                }
+            } else if (st.status === "success") {
                 stopQrPolling();
                 currentQrId = null;
+                if (st.account) {
+                    const idx = currentAccounts.findIndex(a => a.phone_number === st.account.phone_number);
+                    if (idx >= 0) {
+                        currentAccounts[idx] = Object.assign({}, currentAccounts[idx], st.account);
+                    } else {
+                        currentAccounts.push(st.account);
+                    }
+                    saveAccountsToLocalStorage(currentAccounts);
+                    renderAccounts(currentAccounts);
+                    updateAccountsSummary();
+                }
                 closeAddAccountModal();
                 loadAccounts();
                 const phone = st.phone || (st.account && st.account.phone_number) || "";
@@ -1106,6 +1130,18 @@ async function submitQr2FaPassword() {
             if (qrPollTimer) clearInterval(qrPollTimer);
             qrPollTimer = null;
             currentQrId = null;
+            if (data.data && data.data.account) {
+                const acc = data.data.account;
+                const idx = currentAccounts.findIndex(a => a.phone_number === acc.phone_number);
+                if (idx >= 0) {
+                    currentAccounts[idx] = Object.assign({}, currentAccounts[idx], acc);
+                } else {
+                    currentAccounts.push(acc);
+                }
+                saveAccountsToLocalStorage(currentAccounts);
+                renderAccounts(currentAccounts);
+                updateAccountsSummary();
+            }
             closeAddAccountModal();
             loadAccounts();
             logConsole("Account logged in successfully with 2FA password!", "success");
@@ -1183,6 +1219,18 @@ async function requestTelegramCode(triggerButtonId = "btnSendCode", isResend = f
         if (res.ok && data.success) {
             if (data.data && data.data.already_authorized) {
                 currentLoginNeedsPassword = false;
+                if (data.data.account) {
+                    const acc = data.data.account;
+                    const idx = currentAccounts.findIndex(a => a.phone_number === acc.phone_number);
+                    if (idx >= 0) {
+                        currentAccounts[idx] = Object.assign({}, currentAccounts[idx], acc);
+                    } else {
+                        currentAccounts.push(acc);
+                    }
+                    saveAccountsToLocalStorage(currentAccounts);
+                    renderAccounts(currentAccounts);
+                    updateAccountsSummary();
+                }
                 closeAddAccountModal();
                 loadAccounts();
                 logConsole(`Account ${phone} is already authorized!`, "success");
@@ -1323,6 +1371,18 @@ async function verifyTelegramCode() {
                 currentLoginNeedsPassword = false;
                 currentLoginPhone = "";
                 currentLoginPhoneCodeHash = "";
+                if (data.data && data.data.account) {
+                    const acc = data.data.account;
+                    const idx = currentAccounts.findIndex(a => a.phone_number === acc.phone_number);
+                    if (idx >= 0) {
+                        currentAccounts[idx] = Object.assign({}, currentAccounts[idx], acc);
+                    } else {
+                        currentAccounts.push(acc);
+                    }
+                    saveAccountsToLocalStorage(currentAccounts);
+                    renderAccounts(currentAccounts);
+                    updateAccountsSummary();
+                }
                 closeAddAccountModal();
                 loadAccounts();
                 logConsole(data.message || `Account ${phone} successfully connected!`, "success");

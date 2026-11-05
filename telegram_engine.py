@@ -686,6 +686,7 @@ def _move_qr_session(entry: Dict[str, Any], phone: str) -> None:
     if not old_session.exists():
         return
     try:
+        target_path.parent.mkdir(parents=True, exist_ok=True)
         if target_path.exists():
             target_path.unlink()
         old_session.rename(target_path)
@@ -756,44 +757,77 @@ async def _watch_qr_login(qr_id: str):
     client: TelegramClient = entry["client"]
     qr = entry["qr"]
 
-    try:
-        user = await qr.wait()
-        phone = normalize_phone(user.phone) if getattr(user, "phone", None) else f"+{user.id}"
+    # Allow auto-refreshing QR for up to 300 seconds (5 minutes) before giving up
+    max_expiry = time.time() + 300
 
-        sess_str = ""
+    while time.time() < max_expiry:
+        if qr_id not in PENDING_QR_LOGINS:
+            break
         try:
-            sess_str = StringSession.save(client.session)
-        except Exception:
-            pass
+            user = await qr.wait(timeout=25)
+            phone = normalize_phone(user.phone) if getattr(user, "phone", None) else f"+{user.id}"
 
-        # Disconnect first so Windows releases the SQLite session file, then
-        # move the temporary session into the permanent account slot.
-        await _disconnect_client(client)
-        _move_qr_session(entry, phone)
-        entry["temp_session"] = None
+            sess_str = ""
+            try:
+                sess_str = StringSession.save(client.session)
+            except Exception:
+                pass
+            if not sess_str:
+                try:
+                    s = client.session
+                    if getattr(s, "auth_key", None) and getattr(s, "server_address", None):
+                        import ipaddress, struct
+                        ip = ipaddress.ip_address(s.server_address).packed
+                        sess_str = "1" + StringSession.encode(struct.pack(
+                            ">B{}sH256s".format(len(ip)),
+                            s.dc_id,
+                            ip,
+                            s.port,
+                            s.auth_key.key
+                        ))
+                except Exception:
+                    pass
 
-        account_entry = _account_from_user(user, int(entry["api_id"]), entry["api_hash"], phone, sess_str)
-        add_or_update_account(account_entry, entry.get("machine_id"))
+            await _disconnect_client(client)
+            _move_qr_session(entry, phone)
+            entry["temp_session"] = None
 
-        entry["status"] = "success"
-        entry["account"] = account_entry
-        entry["phone"] = phone
-    except SessionPasswordNeededError:
-        entry["status"] = "needs_2fa"
-        entry["error"] = "Two-Step Verification (2FA) is enabled on this account."
-    except (asyncio.TimeoutError, TimeoutError):
+            account_entry = _account_from_user(user, int(entry["api_id"]), entry["api_hash"], phone, sess_str)
+            add_or_update_account(account_entry, entry.get("machine_id"))
+
+            entry["status"] = "success"
+            entry["account"] = account_entry
+            entry["phone"] = phone
+            return
+        except SessionPasswordNeededError:
+            entry["status"] = "needs_2fa"
+            entry["error"] = "Two-Step Verification (2FA) is enabled on this account."
+            return
+        except (asyncio.TimeoutError, TimeoutError):
+            if qr_id not in PENDING_QR_LOGINS:
+                break
+            try:
+                await qr.recreate()
+                b64 = generate_qr_base64(qr.url)
+                entry["url"] = qr.url
+                entry["qr_image"] = f"data:image/png;base64,{b64}"
+                entry["expires_at"] = qr.expires.isoformat()
+                entry["status"] = "waiting"
+            except Exception as rec_err:
+                logger.warning("Could not recreate QR token: %s", rec_err)
+                break
+        except Exception as exc:
+            entry["status"] = "error"
+            entry["error"] = str(exc)
+            logger.exception("QR login failed for %s", qr_id)
+            break
+
+    await _disconnect_client(client)
+    _remove_temp_session(entry)
+    entry["temp_session"] = None
+    if entry.get("status") not in ("success", "needs_2fa"):
         entry["status"] = "expired"
-        entry["error"] = "QR code expired. Generating a new QR code..."
-        await _disconnect_client(client)
-        _remove_temp_session(entry)
-        entry["temp_session"] = None
-    except Exception as exc:
-        entry["status"] = "error"
-        entry["error"] = str(exc)
-        await _disconnect_client(client)
-        _remove_temp_session(entry)
-        entry["temp_session"] = None
-        logger.exception("QR login failed for %s", qr_id)
+        entry["error"] = "QR code expired. Please click Refresh QR Code."
 
 
 def get_qr_login_status(qr_id: str) -> Dict[str, Any]:
@@ -807,6 +841,7 @@ def get_qr_login_status(qr_id: str) -> Dict[str, Any]:
         "phone": entry.get("phone"),
         "expires_at": entry.get("expires_at"),
         "url": entry.get("url"),
+        "qr_image": entry.get("qr_image"),
     }
 
 
@@ -833,6 +868,21 @@ async def submit_qr_2fa(qr_id: str, password: str, machine_id: Optional[str] = N
             sess_str = StringSession.save(client.session)
         except Exception:
             pass
+        if not sess_str:
+            try:
+                s = client.session
+                if getattr(s, "auth_key", None) and getattr(s, "server_address", None):
+                    import ipaddress, struct
+                    ip = ipaddress.ip_address(s.server_address).packed
+                    sess_str = "1" + StringSession.encode(struct.pack(
+                        ">B{}sH256s".format(len(ip)),
+                        s.dc_id,
+                        ip,
+                        s.port,
+                        s.auth_key.key
+                    ))
+            except Exception:
+                pass
         await _disconnect_client(client)
         _move_qr_session(entry, phone)
         entry["temp_session"] = None

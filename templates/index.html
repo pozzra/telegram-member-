@@ -14,7 +14,7 @@
     <!-- Font Awesome Icons -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <!-- Custom Style -->
-    <link rel="stylesheet" href="/static/css/style.css?v=2.2.0">
+    <link rel="stylesheet" href="/static/css/style.css?v=2.3.0">
 </head>
 
 <body
@@ -516,6 +516,18 @@
                         </p>
                     </div>
 
+                    <!-- Direct 1-Click Login Button for Mobile Users -->
+                    <div class="pt-1">
+                        <a id="btnOpenTgLink" href="#"
+                            class="w-full py-2.5 px-3 bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-white font-bold rounded-xl text-xs flex items-center justify-center gap-2 shadow-lg shadow-cyan-500/25 transition transform active:scale-95">
+                            <i class="fab fa-telegram-plane text-base"></i>
+                            <span id="txtOpenTgApp">👉 Open &amp; Confirm in Telegram Directly</span>
+                        </a>
+                        <p class="text-[10px] text-cyan-300/80 mt-1" id="txtOpenTgAppHint">
+                            Using phone? Tap button above to open Telegram app directly — no scanning needed!
+                        </p>
+                    </div>
+
                     <!-- Notice if desktop shows outdated error -->
                     <div class="bg-amber-500/10 border border-amber-500/30 rounded-xl p-2.5 text-left space-y-1 text-xs">
                         <div class="flex items-center gap-1.5 text-amber-300 font-semibold text-[11px]">
@@ -765,7 +777,7 @@
     </div>
 
     <!-- App JavaScript with Cache Busting -->
-    <script src="/static/js/app.js?v=2.2.0"></script>
+    <script src="/static/js/app.js?v=2.3.0"></script>
 </body>
 
 </html>
