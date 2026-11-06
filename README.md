@@ -224,7 +224,7 @@ Open the dashboard from **http://127.0.0.1:8000**. Do not open `templates/index.
 
 | Issue | Solution |
 |-------|----------|
-| **Phone format** | Use international format (e.g. `+85517271771`). Local numbers starting with `0` are converted using `DEFAULT_COUNTRY_CODE` (default `855`). |
+| **Phone format** | Use international format (e.g. `+85512345678`). Local numbers starting with `0` are converted using `DEFAULT_COUNTRY_CODE` (default `855`). |
 | **Code not received** | The code may arrive inside Telegram (from the official "Telegram" service chat) or by SMS. If it does not arrive within a minute, click **Resend Code** in the login dialog. |
 | **2FA enabled** | Enter the Telegram cloud password after confirming the code. The dialog detects this automatically. |
 | **Flood wait / rate limit** | Telegram is rate-limiting login attempts. Wait for the time shown in the error (often 5 minutes to several hours). Repeatedly clicking "Request code" makes the wait longer. |
