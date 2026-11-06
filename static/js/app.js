@@ -1013,11 +1013,6 @@ async function startQrLogin(isAuto = false) {
             const qrImg = document.getElementById("qrCodeImg");
             if (qrImg) qrImg.src = qrInfo.qr_image;
 
-            const btnOpen = document.getElementById("btnOpenTgLink");
-            if (btnOpen) {
-                btnOpen.href = qrInfo.url;
-            }
-
             if (qrLoading) qrLoading.classList.add("hidden");
             if (qrContent) qrContent.classList.remove("hidden");
 
@@ -1077,10 +1072,6 @@ function startPollingQrStatus(qrId) {
                 if (st.qr_image) {
                     const qrImg = document.getElementById("qrCodeImg");
                     if (qrImg && qrImg.src !== st.qr_image) qrImg.src = st.qr_image;
-                }
-                if (st.url) {
-                    const btnOpen = document.getElementById("btnOpenTgLink");
-                    if (btnOpen) btnOpen.href = st.url;
                 }
             } else if (st.status === "success") {
                 stopQrPolling();
