@@ -182,6 +182,25 @@ Set these in the Vercel Dashboard (**Settings → Environment Variables**):
 | `DEFAULT_COUNTRY_CODE` | `855` | Default country code for local phone numbers |
 | `BOT_TOKEN` | `1234567890:ABC...` | Only needed if running `bot.py` separately |
 | `ADMIN_CHAT_ID` | `12345678` | Telegram admin chat ID for the license bot |
+| `LICENSE_API_BASE` | `https://telegram-adder-web.onrender.com` | Central license server used to sync revocations. Leave empty on the Render backend itself. |
+
+### Revocation Sync (Bot ↔ Hosted Site)
+
+License keys are cryptographically signed, so a key can be verified offline. That
+means a key revoked in the Telegram bot would otherwise keep working on the
+hosted site. To prevent this, revocations are synced through the Render backend:
+
+- **Bot → Render:** `/revoke`, the inline **🔒 Revoke** button, **🗑 Delete**, and
+  **/deleteall** all push the revocation to `LICENSE_API_BASE` immediately. On bot
+  startup the bot also pushes its full local revoked list, so keys revoked before
+  this feature existed propagate on the next restart.
+- **Render → Bot/Vercel:** every license verification merges the central revoked
+  list (cached for `REVOKED_SYNC_TTL` seconds, default 30). If the central server
+  is unreachable, the local revoked file is used so verification never hard-fails.
+- **Manual sync:** send `/sync` to the bot to force-pull the revoked list.
+
+> Render must be running for cross-instance revocation to propagate. If it is
+> down, the bot keeps revoking locally and catches up automatically on restart.
 
 ### Limitations on Vercel Serverless
 

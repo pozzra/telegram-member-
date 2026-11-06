@@ -229,7 +229,7 @@ async def license_status(
 @app.post("/api/license/admin/generate")
 async def admin_generate_key(req: AdminCreateKeyRequest):
     # Master key for admin kun_amra
-    if req.admin_key.strip() != "kun_amra_admin_2026":
+    if req.admin_key.strip() != license_manager.ADMIN_MASTER_KEY:
         raise HTTPException(status_code=401, detail="Unauthorized: Invalid Admin Master Key.")
     
     key_info = license_manager.create_license(
@@ -244,7 +244,7 @@ async def admin_generate_key(req: AdminCreateKeyRequest):
 
 @app.get("/api/license/admin/list")
 async def admin_list_keys(admin_key: str):
-    if admin_key.strip() != "kun_amra_admin_2026":
+    if admin_key.strip() != license_manager.ADMIN_MASTER_KEY:
         raise HTTPException(status_code=401, detail="Unauthorized")
     return {"success": True, "licenses": license_manager.list_licenses()}
 
@@ -253,18 +253,70 @@ async def admin_list_keys(admin_key: str):
 async def admin_revoke_key(request: Request):
     body = await request.json()
     admin_key = body.get("admin_key", "")
-    if admin_key != "kun_amra_admin_2026":
+    if admin_key != license_manager.ADMIN_MASTER_KEY:
         raise HTTPException(status_code=401, detail="Unauthorized")
     key_code = body.get("key_code", "")
-    license_manager.revoke_license(key_code)
-    return {"success": True, "message": f"Key {key_code} revoked and blacklisted."}
+    revoke = body.get("revoke", True)
+    if revoke:
+        license_manager.revoke_license(key_code)
+        message = f"Key {key_code} revoked and blacklisted."
+    else:
+        license_manager.unrevoke_key(key_code)
+        conn = license_manager.get_connection()
+        with conn:
+            conn.execute("UPDATE licenses SET is_active = 1 WHERE key_code = ?", (key_code.strip().upper(),))
+        conn.close()
+        message = f"Key {key_code} re-activated."
+    return {"success": True, "message": message}
+
+
+@app.post("/api/license/admin/revoke-bulk")
+async def admin_revoke_bulk(request: Request):
+    """Bulk revoke/reactivate — used by the bot at startup to sync its local list."""
+    body = await request.json()
+    if body.get("admin_key") != license_manager.ADMIN_MASTER_KEY:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    keys = body.get("keys", [])
+    revoke = body.get("revoke", True)
+    if isinstance(keys, list):
+        # Suppress per-key push-back while applying the bulk update.
+        license_manager._push_enabled = False
+        try:
+            for k in keys:
+                clean = str(k).strip().upper()
+                if not clean:
+                    continue
+                if revoke:
+                    license_manager.revoke_license(clean)
+                else:
+                    license_manager.unrevoke_key(clean)
+                    conn = license_manager.get_connection()
+                    with conn:
+                        conn.execute("UPDATE licenses SET is_active = 1 WHERE key_code = ?", (clean,))
+                    conn.close()
+        finally:
+            license_manager._push_enabled = True
+    return {"success": True, "processed": len(keys) if isinstance(keys, list) else 0}
+
+
+@app.get("/api/license/admin/revoked")
+async def admin_revoked_keys(x_admin_key: Optional[str] = Header(None, alias="X-Admin-Key")):
+    """
+    Central revoked-key list. The Telegram bot and the Vercel frontend pull
+    from here so revocations propagate to every hosted instance.
+    """
+    supplied = (x_admin_key or "").strip()
+    if supplied != license_manager.ADMIN_MASTER_KEY:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    revoked = sorted(license_manager._read_revoked_file())
+    return {"success": True, "revoked": revoked, "count": len(revoked)}
 
 
 @app.post("/api/license/admin/delete-all")
 async def admin_delete_all(request: Request):
     body = await request.json()
     admin_key = body.get("admin_key", "")
-    if admin_key != "kun_amra_admin_2026":
+    if admin_key != license_manager.ADMIN_MASTER_KEY:
         raise HTTPException(status_code=401, detail="Unauthorized")
     count = license_manager.delete_all_licenses()
     return {"success": True, "deleted": count}
@@ -555,6 +607,12 @@ async def render_keep_alive_task():
 
 @app.on_event("startup")
 async def on_app_startup():
+    # Warm the revoked-key list from the central server so the first
+    # verification after a cold start already honours bot revocations.
+    try:
+        license_manager.sync_revoked_from_central(force=True)
+    except Exception:
+        pass
     asyncio.create_task(render_keep_alive_task())
 
 

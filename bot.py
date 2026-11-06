@@ -18,6 +18,7 @@ ADMIN COMMANDS:
   /genkey <MachineID> <days>   — Manually generate & send a key (0 = lifetime)
   /listkeys                    — Show last 10 license keys
   /revoke <LicenseKey>         — Revoke a key
+  /sync                        — Sync revocations from the hosted server
   /info                        — Bot status & stats
   /pending                     — Show all pending user requests
 
@@ -171,6 +172,31 @@ async def answer_cbq(client, cbq_id, text="", alert=False):
                     callback_query_id=cbq_id, text=text, show_alert=alert)
 
 
+# ─── Central license-server sync ──────────────────────────
+async def push_revocation_to_central(key_code: str, revoke: bool = True):
+    """
+    Tell the Render backend to revoke (or reactivate) a key so the hosted
+    website and Vercel frontend pick it up immediately. Fire-and-forget:
+    the local revoke still applies if the central server is unreachable.
+    """
+    try:
+        async with httpx.AsyncClient(timeout=license_manager.REVOKED_SYNC_TIMEOUT) as client:
+            await client.post(
+                f"{license_manager.LICENSE_API_BASE}/api/license/admin/revoke",
+                headers={
+                    "Content-Type": "application/json",
+                    "X-Admin-Key": license_manager.ADMIN_MASTER_KEY,
+                },
+                json={
+                    "key_code": key_code,
+                    "revoke": revoke,
+                    "admin_key": license_manager.ADMIN_MASTER_KEY,
+                },
+            )
+    except Exception as exc:
+        log.warning(f"Central revoke push failed for {key_code}: {exc}")
+
+
 # ─── Keyboard builders ────────────────────────────────────
 def _duration_keyboard(machine_id: str, user_chat_id: str = "") -> dict:
     """Inline keyboard for admin: choose license duration (stateless with user_chat_id)."""
@@ -272,6 +298,7 @@ async def on_start(client, msg: dict):
             f"/genkey &lt;MID&gt; &lt;days&gt; — Generate key (0=lifetime)\n"
             f"/listkeys — Show recent license keys\n"
             f"/revoke &lt;KEY&gt; — Revoke a key\n"
+            f"/sync — Sync revocations from the hosted server\n"
             f"/deleteall — Delete & blacklist all keys\n"
             f"/pending — View pending requests\n"
             f"/info — Bot status\n\n"
@@ -683,6 +710,7 @@ async def on_revoke_cmd(client, msg: dict):
 
     key_code = parts[1].strip().upper()
     license_manager.revoke_license(key_code)
+    await push_revocation_to_central(key_code, revoke=True)
     await send(client, chat_id, f"🔒 License key <code>{key_code}</code> has been <b>revoked</b>.")
 
 
@@ -695,6 +723,7 @@ async def on_revoke_callback(client, cbq: dict, key_code: str):
         return
 
     license_manager.revoke_license(key_code)
+    await push_revocation_to_central(key_code, revoke=True)
     await answer_cbq(client, cbq["id"], f"🔒 Revoked {key_code}")
 
     # Refresh the list in-place
@@ -739,6 +768,7 @@ async def on_reactivate_callback(client, cbq: dict, key_code: str):
         return
 
     license_manager.unrevoke_key(key_code)
+    await push_revocation_to_central(key_code, revoke=False)
     conn = license_manager.get_connection()
     with conn:
         conn.execute("UPDATE licenses SET is_active = 1 WHERE key_code = ?", (key_code.strip(),))
@@ -832,6 +862,7 @@ async def on_delconfirm_callback(client, cbq: dict, key_code: str):
         return
 
     license_manager.delete_license(key_code)
+    await push_revocation_to_central(key_code, revoke=True)
     await answer_cbq(client, cbq["id"], f"🗑 Deleted {key_code}")
 
     # Refresh page 0 after deletion
@@ -919,6 +950,21 @@ async def on_deleteall_cmd(client, msg: dict):
     await send(client, chat_id,
         f"🗑️ <b>Deleted & Blacklisted {count} License Key(s)!</b>\n\n"
         f"All non-VIP keys have been revoked and deleted from the system."
+    )
+
+
+async def on_sync_cmd(client, msg: dict):
+    """Command: /sync — force-pull the revoked-key list from the central server."""
+    chat_id = str(msg["chat"]["id"])
+    if chat_id != bot_state.get("admin_chat_id"):
+        await send(client, chat_id, "❌ Admin only.")
+        return
+
+    merged = license_manager.sync_revoked_from_central(force=True)
+    await send(client, chat_id,
+        f"🔄 <b>Revocation sync complete</b>\n\n"
+        f"🌐 Central server: <code>{license_manager.LICENSE_API_BASE or '(local)'}</code>\n"
+        f"🚫 Revoked keys now known locally: <b>{len(merged)}</b>"
     )
 
 
@@ -1042,6 +1088,8 @@ async def process_update(client: httpx.AsyncClient, update: dict):
             await on_listkeys_cmd(client, msg)
         elif cmd == "/revoke":
             await on_revoke_cmd(client, msg)
+        elif cmd == "/sync":
+            await on_sync_cmd(client, msg)
         elif cmd in ("/deleteall", "/delete_all") or (cmd == "/delete" and "all" in text.lower()):
             await on_deleteall_cmd(client, msg)
         elif cmd == "/pending":
@@ -1102,6 +1150,23 @@ async def run_bot():
                 await tg(client, "deleteWebhook")
         except Exception as e:
             log.warning(f"Webhook check warning: {e}")
+
+        # Pull revocations from the central server so revocations made on the
+        # hosted website are honoured by this bot instance too.
+        try:
+            merged = license_manager.sync_revoked_from_central(force=True)
+            log.info(f"Central revocation sync: {len(merged)} revoked key(s)")
+        except Exception as e:
+            log.warning(f"Central revocation sync failed: {e}")
+
+        # Push any revocations that already existed locally (e.g. made before
+        # the sync feature) so the hosted site catches up on bot restart.
+        try:
+            pushed = license_manager.push_local_revocations_to_central()
+            if pushed:
+                log.info(f"Pushed {pushed} local revocation(s) to central server")
+        except Exception as e:
+            log.warning(f"Local revocation push failed: {e}")
 
         log.info(f"Bot connected: @{bot_username}")
         log.info(f"Admin registered: {bool(bot_state.get('admin_chat_id'))}")

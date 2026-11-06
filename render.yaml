@@ -23,4 +23,9 @@ services:
         value: "kun_amra"
       - key: RENDER_EXTERNAL_URL
         value: "https://telegram-adder-web.onrender.com"
+      # This service IS the central license server: revocations are stored in
+      # its own SQLite DB and served from /api/license/admin/revoked.
+      # Leave empty so the backend never calls itself over HTTP.
+      - key: LICENSE_API_BASE
+        value: ""
 

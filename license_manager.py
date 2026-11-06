@@ -4,6 +4,9 @@ import secrets
 import string
 import argparse
 import hashlib
+import json
+import threading
+import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 import shutil
@@ -14,6 +17,22 @@ BASE_DIR = Path(__file__).resolve().parent
 DATA_DIR = Path("/tmp/data") if IS_VERCEL else (BASE_DIR / "data")
 DB_PATH = DATA_DIR / "licenses.db"
 LICENSE_SECRET = os.environ.get("LICENSE_SECRET", "TGADDER_KUN_AMRA_2026_SECURE_SALT")
+
+# ==========================================
+# Central license server (Render backend)
+# ==========================================
+# Revocations are pushed here by the Telegram bot and pulled by every other
+# instance (Vercel frontend, local bot, Render itself) so a key revoked in
+# the bot is instantly invalid everywhere. Render owns the authoritative list.
+LICENSE_API_BASE = os.environ.get("LICENSE_API_BASE", "https://telegram-adder-web.onrender.com").strip().rstrip("/")
+ADMIN_MASTER_KEY = os.environ.get("ADMIN_MASTER_KEY", "kun_amra_admin_2026")
+REVOKED_SYNC_TTL = float(os.environ.get("REVOKED_SYNC_TTL", "30"))
+REVOKED_SYNC_TIMEOUT = float(os.environ.get("REVOKED_SYNC_TIMEOUT", "3"))
+
+_revoked_sync_lock = threading.Lock()
+_revoked_sync_cache = {"ts": 0.0, "keys": None, "failed": False}
+_revoked_sync_inflight = False
+_push_enabled = True  # disabled while the server applies a bulk push to avoid self-calls
 
 def get_now_utc():
     return datetime.now(timezone.utc)
@@ -190,7 +209,7 @@ def create_license(days=None, tier="VIP", max_accounts=50, note="", custom_key=N
 
 REVOKED_KEYS_FILE = DATA_DIR / "revoked_keys.json"
 
-def get_revoked_keys() -> set:
+def _read_revoked_file() -> set:
     try:
         if REVOKED_KEYS_FILE.exists():
             with open(REVOKED_KEYS_FILE, "r", encoding="utf-8") as f:
@@ -198,31 +217,180 @@ def get_revoked_keys() -> set:
                 if isinstance(data, list):
                     return set(str(k).upper().strip() for k in data if k)
     except Exception:
+        # Truncated/corrupt file (e.g. a 0-byte write) — treat as empty.
         pass
     return set()
+
+def _write_revoked_file(keys: set):
+    """Atomic write so a crash mid-write cannot truncate the blacklist."""
+    tmp = REVOKED_KEYS_FILE.with_suffix(".json.tmp")
+    try:
+        REVOKED_KEYS_FILE.parent.mkdir(parents=True, exist_ok=True)
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(sorted(list(keys)), f, indent=2)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tmp, REVOKED_KEYS_FILE)
+    except Exception:
+        try:
+            if tmp.exists():
+                tmp.unlink()
+        except Exception:
+            pass
+
+def _is_local_api_base() -> bool:
+    """
+    True when this process IS the central server and must not call itself
+    over HTTP (Render backend, or an explicitly blanked LICENSE_API_BASE).
+    """
+    base = (LICENSE_API_BASE or "").strip().lower()
+    if not base:
+        return True
+    # Render sets these automatically; the backend there owns the DB directly.
+    if os.environ.get("RENDER") or os.environ.get("RENDER_SERVICE_ID"):
+        return True
+    return False
+
+def fetch_central_revoked_keys() -> set:
+    """Fetch the authoritative revoked-key list from the Render backend."""
+    if _is_local_api_base():
+        return set()
+    try:
+        import httpx
+        resp = httpx.get(
+            f"{LICENSE_API_BASE}/api/license/admin/revoked",
+            headers={"X-Admin-Key": ADMIN_MASTER_KEY},
+            timeout=REVOKED_SYNC_TIMEOUT,
+        )
+        if resp.status_code == 200:
+            data = resp.json()
+            raw = data.get("revoked", []) if isinstance(data, dict) else []
+            return set(str(k).upper().strip() for k in raw if k)
+    except Exception:
+        pass
+    return set()
+
+def sync_revoked_from_central(force: bool = False) -> set:
+    """
+    Merge the central revoked list into the local one.
+
+    Returns the merged local set. Falls back to the local file when the
+    central server is unreachable, so verification never hard-fails offline.
+    """
+    global _revoked_sync_inflight
+
+    local = _read_revoked_file()
+
+    if _is_local_api_base():
+        _revoked_sync_cache["keys"] = local
+        _revoked_sync_cache["ts"] = time.time()
+        return local
+
+    with _revoked_sync_lock:
+        now = time.time()
+        cached = _revoked_sync_cache.get("keys")
+        if not force and cached is not None and (now - _revoked_sync_cache.get("ts", 0)) < REVOKED_SYNC_TTL:
+            return local | cached
+
+        if _revoked_sync_inflight:
+            return local | (cached or set())
+
+        _revoked_sync_inflight = True
+        try:
+            remote = fetch_central_revoked_keys()
+            if remote:
+                local = local | remote
+                _write_revoked_file(local)
+            _revoked_sync_cache["keys"] = remote
+            _revoked_sync_cache["ts"] = now
+            _revoked_sync_cache["failed"] = not remote
+        finally:
+            _revoked_sync_inflight = False
+
+    return local
+
+def get_revoked_keys() -> set:
+    """Local revoked set, merged with the central list when possible."""
+    local = _read_revoked_file()
+    if _is_local_api_base():
+        return local
+    try:
+        return sync_revoked_from_central() | local
+    except Exception:
+        return local
+
+def _invalidate_sync_cache():
+    _revoked_sync_cache["ts"] = 0.0
+    _revoked_sync_cache["keys"] = None
 
 def save_revoked_key(key_code: str):
     if not key_code:
         return
-    revoked = get_revoked_keys()
-    revoked.add(str(key_code).upper().strip())
-    try:
-        REVOKED_KEYS_FILE.parent.mkdir(parents=True, exist_ok=True)
-        with open(REVOKED_KEYS_FILE, "w", encoding="utf-8") as f:
-            json.dump(sorted(list(revoked)), f, indent=2)
-    except Exception:
-        pass
+    clean = str(key_code).upper().strip()
+    revoked = _read_revoked_file()
+    revoked.add(clean)
+    _write_revoked_file(revoked)
+    _invalidate_sync_cache()
+    # Push to the central server so every hosted instance sees it.
+    push_revocation_to_central(clean)
 
 def unrevoke_key(key_code: str):
     if not key_code:
         return
-    revoked = get_revoked_keys()
-    revoked.discard(str(key_code).upper().strip())
+    clean = str(key_code).upper().strip()
+    revoked = _read_revoked_file()
+    revoked.discard(clean)
+    _write_revoked_file(revoked)
+    _invalidate_sync_cache()
+    # Push the re-activation to the central server as well.
+    push_revocation_to_central(clean, revoke=False)
+
+def push_revocation_to_central(key_code: str, revoke: bool = True):
+    """
+    Tell the Render backend to revoke (or reactivate) a key.
+    Fire-and-forget: failures leave the local state intact and are retried
+    on the next verification sync.
+    """
+    if _is_local_api_base() or not key_code or not _push_enabled:
+        return
     try:
-        with open(REVOKED_KEYS_FILE, "w", encoding="utf-8") as f:
-            json.dump(sorted(list(revoked)), f, indent=2)
+        import httpx
+        httpx.post(
+            f"{LICENSE_API_BASE}/api/license/admin/revoke",
+            headers={
+                "Content-Type": "application/json",
+                "X-Admin-Key": ADMIN_MASTER_KEY,
+            },
+            json={"key_code": key_code, "revoke": revoke, "admin_key": ADMIN_MASTER_KEY},
+            timeout=REVOKED_SYNC_TIMEOUT,
+        )
     except Exception:
         pass
+
+def push_local_revocations_to_central():
+    """
+    Push every locally-revoked key to the central server. Used at bot startup
+    so revocations made before the sync feature existed also propagate.
+    """
+    if _is_local_api_base():
+        return 0
+    keys = sorted(_read_revoked_file())
+    if not keys:
+        return 0
+    try:
+        import httpx
+        httpx.post(
+            f"{LICENSE_API_BASE}/api/license/admin/revoke-bulk",
+            headers={
+                "Content-Type": "application/json",
+                "X-Admin-Key": ADMIN_MASTER_KEY,
+            },
+            json={"keys": keys, "revoke": True, "admin_key": ADMIN_MASTER_KEY},
+            timeout=max(REVOKED_SYNC_TIMEOUT * 2, 8),
+        )
+    except Exception:
+        pass
+    return len(keys)
 
 def verify_license(key_code: str, machine_id: str = None, bind_if_unbound: bool = False):
     if not key_code:
@@ -233,8 +401,14 @@ def verify_license(key_code: str, machine_id: str = None, bind_if_unbound: bool 
     clean_key = key_code.strip().upper()
     clean_machine = machine_id.strip().upper() if machine_id else None
 
-    # Check revoked blacklist FIRST (prevents revoked signed keys from auto-reactivating!)
-    if clean_key in get_revoked_keys():
+    # Check revoked blacklist FIRST (prevents revoked signed keys from auto-reactivating!).
+    # Merge the central (Render) list so a key revoked in the Telegram bot is
+    # honoured here too. Cached by TTL; falls back to the local file offline.
+    try:
+        revoked_set = sync_revoked_from_central() | _read_revoked_file()
+    except Exception:
+        revoked_set = _read_revoked_file()
+    if clean_key in revoked_set:
         conn.close()
         return False, "This license key has been deactivated or revoked by Admin @kun_amra.", None
 
@@ -360,14 +534,21 @@ def delete_all_licenses():
     cursor = conn.cursor()
     cursor.execute("SELECT key_code FROM licenses WHERE key_code NOT LIKE 'TGADD-VIP-%'")
     rows = cursor.fetchall()
-    deleted_count = 0
-    for r in rows:
-        k = r["key_code"]
-        save_revoked_key(k)
-        deleted_count += 1
+    keys = [r["key_code"] for r in rows]
+    deleted_count = len(keys)
+
+    # Write the whole blacklist locally in one pass, then push once per key.
+    revoked = _read_revoked_file()
+    revoked |= {str(k).upper().strip() for k in keys}
+    _write_revoked_file(revoked)
+
     with conn:
         conn.execute("DELETE FROM licenses WHERE key_code NOT LIKE 'TGADD-VIP-%'")
     conn.close()
+
+    for k in keys:
+        push_revocation_to_central(k, revoke=True)
+
     return deleted_count
 
 if __name__ == "__main__":
@@ -379,14 +560,32 @@ if __name__ == "__main__":
     parser.add_argument("--note", type=str, default="", help="Note or customer name")
     parser.add_argument("--custom-key", type=str, default=None, help="Custom key string")
     parser.add_argument("--list", action="store_true", help="List all license keys")
+    parser.add_argument("--revoked", action="store_true", help="List revoked keys (merged with central server)")
+    parser.add_argument("--sync", action="store_true", help="Force-sync revoked list from the central server")
     parser.add_argument("--verify", type=str, default=None, help="Verify a license key")
     parser.add_argument("--revoke", type=str, default=None, help="Revoke a license key")
+    parser.add_argument("--unrevoke", type=str, default=None, help="Re-activate a revoked license key")
 
     args = parser.parse_args()
 
     init_db()
 
-    if args.generate:
+    if args.sync:
+        merged = sync_revoked_from_central(force=True)
+        print(f"\nSynced revoked keys from {LICENSE_API_BASE or '(local)'}: {len(merged)} key(s)")
+        for k in sorted(merged):
+            print(f"  - {k}")
+        print()
+    elif args.revoked:
+        merged = get_revoked_keys()
+        print(f"\nRevoked keys: {len(merged)}")
+        for k in sorted(merged):
+            print(f"  - {k}")
+        print()
+    elif args.unrevoke:
+        unrevoke_key(args.unrevoke)
+        print(f"License key {args.unrevoke} re-activated (and pushed to central server).")
+    elif args.generate:
         lic = create_license(days=args.days, tier=args.tier, max_accounts=args.max_accounts, note=args.note, custom_key=args.custom_key)
         print("\n=== NEW LICENSE GENERATED ===")
         print(f"Key Code     : {lic['key_code']}")
