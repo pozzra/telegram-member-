@@ -5,6 +5,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, viewport-fit=cover">
     <title>Telegram Adder Pro - Web Edition</title>
+    <link rel="icon" href="https://logodix.com/logo/1255276.png">
     <!-- Defensive Polyfill for Tailwind CDN crypto in non-HTTPS / restricted contexts -->
     <script>
         if (typeof window !== "undefined" && !window.crypto) { window.crypto = {}; }
@@ -21,7 +22,8 @@
     class="bg-[#0b0f17] text-gray-200 min-h-screen flex flex-col font-sans selection:bg-cyan-500 selection:text-white overflow-x-hidden">
 
     <!-- Top Navigation Bar -->
-    <header class="border-b border-gray-800/80 bg-[#111827]/85 backdrop-blur-md sticky top-0 z-40 px-2.5 sm:px-4 py-2.5 sm:py-3 shadow-lg">
+    <header
+        class="border-b border-gray-800/80 bg-[#111827]/85 backdrop-blur-md sticky top-0 z-40 px-2.5 sm:px-4 py-2.5 sm:py-3 shadow-lg">
         <div class="max-w-7xl mx-auto flex items-center justify-between gap-2 sm:gap-4">
 
             <!-- Logo & Brand -->
@@ -31,12 +33,14 @@
                     <i class="fab fa-telegram-plane"></i>
                 </div>
                 <div class="min-w-0 truncate">
-                    <h1 class="text-sm sm:text-lg font-bold tracking-wide text-white flex items-center gap-1.5 sm:gap-2 truncate">
+                    <h1
+                        class="text-sm sm:text-lg font-bold tracking-wide text-white flex items-center gap-1.5 sm:gap-2 truncate">
                         Telegram Adder Web <span
                             class="text-[10px] sm:text-xs px-1.5 sm:px-2 py-0.5 rounded-full bg-cyan-500/20 text-cyan-400 border border-cyan-500/30">PRO
                             v2.0</span>
                     </h1>
-                    <p class="text-[10px] sm:text-xs text-gray-400 truncate" id="headerSubtitle">Multi-Account Load Balancing & Member Inviter
+                    <p class="text-[10px] sm:text-xs text-gray-400 truncate" id="headerSubtitle">Multi-Account Load
+                        Balancing & Member Inviter
                     </p>
                 </div>
             </div>
@@ -116,7 +120,8 @@
             <div class="lg:col-span-5 space-y-4 sm:space-y-6">
 
                 <!-- Account Management Card -->
-                <div class="bg-[#111827]/90 backdrop-blur-md rounded-2xl border border-gray-800 p-3.5 sm:p-5 shadow-xl relative overflow-hidden interactive-card">
+                <div
+                    class="bg-[#111827]/90 backdrop-blur-md rounded-2xl border border-gray-800 p-3.5 sm:p-5 shadow-xl relative overflow-hidden interactive-card">
                     <div class="flex items-center justify-between mb-4">
                         <div class="flex items-center gap-2">
                             <div
@@ -174,7 +179,8 @@
             <div class="lg:col-span-7 space-y-4 sm:space-y-6">
 
                 <!-- 1. Source Group Scraper Card -->
-                <div class="bg-[#111827]/90 backdrop-blur-md rounded-2xl border border-gray-800 p-3.5 sm:p-5 shadow-xl interactive-card">
+                <div
+                    class="bg-[#111827]/90 backdrop-blur-md rounded-2xl border border-gray-800 p-3.5 sm:p-5 shadow-xl interactive-card">
                     <div class="flex items-center gap-2 mb-3">
                         <div
                             class="w-8 h-8 rounded-lg bg-emerald-500/10 text-emerald-400 flex items-center justify-center">
@@ -203,7 +209,8 @@
                 </div>
 
                 <!-- 2. Member Candidates List Card -->
-                <div class="bg-[#111827]/90 backdrop-blur-md rounded-2xl border border-gray-800 p-3.5 sm:p-5 shadow-xl interactive-card">
+                <div
+                    class="bg-[#111827]/90 backdrop-blur-md rounded-2xl border border-gray-800 p-3.5 sm:p-5 shadow-xl interactive-card">
                     <div class="flex items-center justify-between mb-2">
                         <div class="flex items-center gap-2">
                             <div
@@ -253,7 +260,8 @@
                 </div>
 
                 <!-- 3. Target Group & Adding Engine -->
-                <div class="bg-[#111827]/90 backdrop-blur-md rounded-2xl border border-gray-800 p-3.5 sm:p-5 shadow-xl space-y-4 interactive-card">
+                <div
+                    class="bg-[#111827]/90 backdrop-blur-md rounded-2xl border border-gray-800 p-3.5 sm:p-5 shadow-xl space-y-4 interactive-card">
                     <div class="flex items-center gap-2">
                         <div class="w-8 h-8 rounded-lg bg-blue-500/10 text-blue-400 flex items-center justify-center">
                             <i class="fas fa-user-plus"></i>
@@ -347,7 +355,8 @@
                             <button onclick="clearConsoleLogs()"
                                 class="hover:text-gray-200 transition text-[10px]">Clear</button>
                         </div>
-                        <div id="consoleLogArea" class="h-28 sm:h-36 overflow-y-auto space-y-1 font-mono text-[10px] sm:text-[11px] pr-1">
+                        <div id="consoleLogArea"
+                            class="h-28 sm:h-36 overflow-y-auto space-y-1 font-mono text-[10px] sm:text-[11px] pr-1">
                             <div class="text-gray-600">[System ready. Waiting for tasks...]</div>
                         </div>
                     </div>
@@ -461,7 +470,8 @@
     <!-- ============================================================== -->
     <div id="addAccountModal"
         class="fixed inset-0 bg-black/85 backdrop-blur-sm z-50 flex items-center justify-center p-3 sm:p-4 hidden">
-        <div class="bg-[#111827] border border-gray-700 rounded-2xl w-full max-w-md max-h-[92vh] overflow-y-auto p-4 sm:p-6 shadow-2xl relative modal-animate-enter">
+        <div
+            class="bg-[#111827] border border-gray-700 rounded-2xl w-full max-w-md max-h-[92vh] overflow-y-auto p-4 sm:p-6 shadow-2xl relative modal-animate-enter">
             <button onclick="closeAddAccountModal()"
                 class="absolute top-4 right-4 text-gray-400 hover:text-white transition">
                 <i class="fas fa-times"></i>
@@ -498,12 +508,14 @@
                 <!-- QR Loading Indicator -->
                 <div id="qrLoadingState" class="py-10 text-center space-y-3">
                     <i class="fas fa-circle-notch fa-spin text-3xl text-cyan-400"></i>
-                    <p class="text-xs text-gray-400" id="txtGeneratingQr">Connecting to Telegram to generate QR Code...</p>
+                    <p class="text-xs text-gray-400" id="txtGeneratingQr">Connecting to Telegram to generate QR Code...
+                    </p>
                 </div>
 
                 <!-- QR Code Display Content -->
                 <div id="qrContentState" class="hidden text-center space-y-3">
-                    <div class="relative inline-block mx-auto p-2.5 bg-white rounded-2xl shadow-xl border-4 border-cyan-500/30">
+                    <div
+                        class="relative inline-block mx-auto p-2.5 bg-white rounded-2xl shadow-xl border-4 border-cyan-500/30">
                         <img id="qrCodeImg" src="" alt="Telegram Login QR Code" class="w-48 h-48 mx-auto rounded-lg">
                     </div>
 
@@ -529,29 +541,35 @@
                     </div>
 
                     <!-- Notice if desktop shows outdated error -->
-                    <div class="bg-amber-500/10 border border-amber-500/30 rounded-xl p-2.5 text-left space-y-1 text-xs">
+                    <div
+                        class="bg-amber-500/10 border border-amber-500/30 rounded-xl p-2.5 text-left space-y-1 text-xs">
                         <div class="flex items-center gap-1.5 text-amber-300 font-semibold text-[11px]">
                             <i class="fas fa-info-circle text-amber-400"></i>
                             <span>Tip for Telegram Desktop Users</span>
                         </div>
                         <p class="text-[10px] text-gray-300">
-                            If Telegram Desktop says "app version is outdated and does not support entering code via a link", please scan this QR with your <b>Phone</b>, or switch to <b>Phone Number + Code</b> to receive the 5-digit code in Telegram!
+                            If Telegram Desktop says "app version is outdated and does not support entering code via a
+                            link", please scan this QR with your <b>Phone</b>, or switch to <b>Phone Number + Code</b>
+                            to receive the 5-digit code in Telegram!
                         </p>
-                        <button type="button" onclick="switchLoginMode('phone')" class="w-full mt-1 py-1.5 bg-cyan-600/30 hover:bg-cyan-600/50 border border-cyan-500/40 text-cyan-300 hover:text-white rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition">
+                        <button type="button" onclick="switchLoginMode('phone')"
+                            class="w-full mt-1 py-1.5 bg-cyan-600/30 hover:bg-cyan-600/50 border border-cyan-500/40 text-cyan-300 hover:text-white rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition">
                             <i class="fas fa-keyboard"></i>
                             <span>Switch to Enter Code Manually</span>
                         </button>
                     </div>
 
                     <!-- Live Polling Status Indicator -->
-                    <div class="flex items-center justify-center gap-2 text-[11px] text-cyan-300 bg-cyan-950/40 border border-cyan-800/50 py-1.5 px-3 rounded-lg">
+                    <div
+                        class="flex items-center justify-center gap-2 text-[11px] text-cyan-300 bg-cyan-950/40 border border-cyan-800/50 py-1.5 px-3 rounded-lg">
                         <span class="w-2 h-2 rounded-full bg-cyan-400 animate-ping"></span>
                         <span id="txtQrStatusMsg">Waiting for confirmation in Telegram...</span>
                     </div>
 
                     <!-- Refresh QR Button -->
                     <div class="flex justify-center pt-0.5">
-                        <button type="button" onclick="startQrLogin()" class="text-[11px] text-gray-400 hover:text-cyan-400 flex items-center gap-1 transition">
+                        <button type="button" onclick="startQrLogin()"
+                            class="text-[11px] text-gray-400 hover:text-cyan-400 flex items-center gap-1 transition">
                             <i class="fas fa-sync-alt text-[10px]"></i>
                             <span id="txtRefreshQr">Refresh QR Code</span>
                         </button>
@@ -559,13 +577,15 @@
                 </div>
 
                 <!-- 2FA Password Card (If Account Has 2FA) -->
-                <div id="qr2FaCard" class="hidden bg-amber-500/10 border border-amber-500/30 rounded-xl p-3.5 space-y-2">
+                <div id="qr2FaCard"
+                    class="hidden bg-amber-500/10 border border-amber-500/30 rounded-xl p-3.5 space-y-2">
                     <div class="flex items-center justify-between">
                         <span class="text-xs font-semibold text-amber-300 flex items-center gap-1.5">
                             <i class="fas fa-lock text-amber-400"></i>
                             Two-Step Verification (2FA) Password
                         </span>
-                        <span class="text-[10px] text-amber-400 bg-amber-500/20 px-1.5 py-0.5 rounded font-bold">2FA Required</span>
+                        <span class="text-[10px] text-amber-400 bg-amber-500/20 px-1.5 py-0.5 rounded font-bold">2FA
+                            Required</span>
                     </div>
                     <input type="password" id="inputQr2FaPassword" placeholder="Enter your 2FA password"
                         onkeydown="if(event.key==='Enter') submitQr2FaPassword()"
@@ -578,152 +598,162 @@
                     <div id="qr2FaError" class="hidden text-[11px] text-red-400 text-center"></div>
                 </div>
 
-                <div id="qrModalError" class="hidden text-xs text-red-400 bg-red-950/40 border border-red-800 rounded-lg p-2.5 text-center"></div>
+                <div id="qrModalError"
+                    class="hidden text-xs text-red-400 bg-red-950/40 border border-red-800 rounded-lg p-2.5 text-center">
+                </div>
             </div>
 
             <!-- ============================================== -->
             <!-- MODE 2: Phone Number + SMS/OTP Code Tab        -->
             <!-- ============================================== -->
             <div id="panelLoginPhone" class="space-y-4">
-            <!-- STEP 1: API ID, Hash, Phone -->
-            <div id="stepAccountCredentials" class="space-y-4">
+                <!-- STEP 1: API ID, Hash, Phone -->
+                <div id="stepAccountCredentials" class="space-y-4">
 
-                <!-- Quick Action Bar: Get Hash from my.telegram.org & Auto-fill Default -->
-                <div class="bg-gray-900/90 border border-cyan-500/25 rounded-xl p-2.5 flex items-center gap-2">
-                    <a href="https://my.telegram.org/apps" target="_blank" rel="noopener noreferrer"
-                        class="flex-1 py-2 px-3 bg-blue-600/30 hover:bg-blue-600/50 border border-blue-500/40 text-blue-300 hover:text-white rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition shadow-sm">
-                        <i class="fab fa-telegram text-xs"></i>
-                        <span id="btnGetHashText">Get API Hash (my.telegram.org)</span>
-                        <i class="fas fa-external-link-alt text-[9px] opacity-70"></i>
-                    </a>
-                    <button type="button" onclick="fillDefaultApiCredentials('desktop')"
-                        class="py-2 px-3 bg-cyan-600/30 hover:bg-cyan-600/50 border border-cyan-500/40 text-cyan-300 hover:text-white rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition shadow-sm"
-                        title="Auto-fill Telegram Desktop Official credentials">
-                        <i class="fas fa-magic text-xs"></i>
-                        <span id="btnAutoFillHashText">Auto-Fill Hash</span>
-                    </button>
-                </div>
-
-                <div>
-                    <div class="flex items-center justify-between mb-1">
-                        <label class="block text-xs font-semibold text-gray-300" id="lblApiId">API ID (Numeric)</label>
+                    <!-- Quick Action Bar: Get Hash from my.telegram.org & Auto-fill Default -->
+                    <div class="bg-gray-900/90 border border-cyan-500/25 rounded-xl p-2.5 flex items-center gap-2">
                         <a href="https://my.telegram.org/apps" target="_blank" rel="noopener noreferrer"
-                            class="text-[11px] text-cyan-400 hover:underline flex items-center gap-1">
-                            <span>my.telegram.org</span>
-                            <i class="fas fa-external-link-alt text-[9px]"></i>
+                            class="flex-1 py-2 px-3 bg-blue-600/30 hover:bg-blue-600/50 border border-blue-500/40 text-blue-300 hover:text-white rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition shadow-sm">
+                            <i class="fab fa-telegram text-xs"></i>
+                            <span id="btnGetHashText">Get API Hash (my.telegram.org)</span>
+                            <i class="fas fa-external-link-alt text-[9px] opacity-70"></i>
                         </a>
+                        <button type="button" onclick="fillDefaultApiCredentials('desktop')"
+                            class="py-2 px-3 bg-cyan-600/30 hover:bg-cyan-600/50 border border-cyan-500/40 text-cyan-300 hover:text-white rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition shadow-sm"
+                            title="Auto-fill Telegram Desktop Official credentials">
+                            <i class="fas fa-magic text-xs"></i>
+                            <span id="btnAutoFillHashText">Auto-Fill Hash</span>
+                        </button>
                     </div>
-                    <input type="number" id="inputApiId" placeholder="e.g. 12345678"
-                        class="w-full bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-200 focus:outline-none focus:border-blue-500 transition">
-                </div>
 
-                <div>
-                    <div class="flex items-center justify-between mb-1">
-                        <label class="block text-xs font-semibold text-gray-300" id="lblApiHash">API Hash</label>
-                        <div class="flex items-center gap-2">
-                            <button type="button" onclick="fillDefaultApiCredentials('desktop')"
-                                class="text-[11px] text-cyan-400 hover:underline flex items-center gap-1">
-                                <i class="fas fa-bolt text-[10px]"></i>
-                                <span>Default</span>
-                            </button>
-                            <span class="text-gray-600">|</span>
+                    <div>
+                        <div class="flex items-center justify-between mb-1">
+                            <label class="block text-xs font-semibold text-gray-300" id="lblApiId">API ID
+                                (Numeric)</label>
                             <a href="https://my.telegram.org/apps" target="_blank" rel="noopener noreferrer"
-                                class="text-[11px] text-blue-400 hover:underline flex items-center gap-1">
-                                <i class="fas fa-key text-[10px]"></i>
-                                <span id="lblGetHashLink">Get Hash</span>
+                                class="text-[11px] text-cyan-400 hover:underline flex items-center gap-1">
+                                <span>my.telegram.org</span>
                                 <i class="fas fa-external-link-alt text-[9px]"></i>
                             </a>
                         </div>
+                        <input type="number" id="inputApiId" placeholder="e.g. 12345678"
+                            class="w-full bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-200 focus:outline-none focus:border-blue-500 transition">
                     </div>
-                    <input type="text" id="inputApiHash" placeholder="e.g. 9b4d8f...32chars"
-                        class="w-full bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-200 focus:outline-none focus:border-blue-500 transition">
-                </div>
 
-                <div>
-                    <label class="block text-xs font-semibold text-gray-300 mb-1">Phone Number (with Country
-                        Code)</label>
-                    <input type="text" id="inputPhone" placeholder="+85517271771"
-                        class="w-full bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-200 focus:outline-none focus:border-blue-500 transition">
-                </div>
-
-                <div id="accountModalError"
-                    class="hidden text-xs text-red-400 bg-red-950/40 border border-red-800 rounded-lg p-2.5"></div>
-
-                <button onclick="requestTelegramCode()" id="btnSendCode"
-                    class="w-full py-2.5 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-xl transition shadow-lg shadow-blue-600/20 flex items-center justify-center gap-2">
-                    <i class="fas fa-paper-plane"></i>
-                    <span id="btnSendCodeText">Request Login Code</span>
-                </button>
-            </div>
-
-            <!-- STEP 2: Enter Telegram OTP Code -->
-            <div id="stepAccountCode" class="space-y-4 hidden">
-                <div class="text-center mb-4">
-                    <div
-                        class="w-12 h-12 mx-auto rounded-xl bg-cyan-500/10 text-cyan-400 flex items-center justify-center text-xl mb-2">
-                        <i class="fas fa-shield-alt"></i>
+                    <div>
+                        <div class="flex items-center justify-between mb-1">
+                            <label class="block text-xs font-semibold text-gray-300" id="lblApiHash">API Hash</label>
+                            <div class="flex items-center gap-2">
+                                <button type="button" onclick="fillDefaultApiCredentials('desktop')"
+                                    class="text-[11px] text-cyan-400 hover:underline flex items-center gap-1">
+                                    <i class="fas fa-bolt text-[10px]"></i>
+                                    <span>Default</span>
+                                </button>
+                                <span class="text-gray-600">|</span>
+                                <a href="https://my.telegram.org/apps" target="_blank" rel="noopener noreferrer"
+                                    class="text-[11px] text-blue-400 hover:underline flex items-center gap-1">
+                                    <i class="fas fa-key text-[10px]"></i>
+                                    <span id="lblGetHashLink">Get Hash</span>
+                                    <i class="fas fa-external-link-alt text-[9px]"></i>
+                                </a>
+                            </div>
+                        </div>
+                        <input type="text" id="inputApiHash" placeholder="e.g. 9b4d8f...32chars"
+                            class="w-full bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-200 focus:outline-none focus:border-blue-500 transition">
                     </div>
-                    <h3 class="text-base font-bold text-white" id="titleStep2">Enter Login Code</h3>
-                    <p class="text-xs text-gray-400 mt-1" id="descStep2">Telegram sent a confirmation code for
-                        <span id="codeSentPhone" class="text-cyan-400 font-mono font-bold"></span></p>
-                    <p class="text-[11px] text-cyan-300/80 mt-1" id="codeSentHint"></p>
+
+                    <div>
+                        <label class="block text-xs font-semibold text-gray-300 mb-1">Phone Number (with Country
+                            Code)</label>
+                        <input type="text" id="inputPhone" placeholder="+85517271771"
+                            class="w-full bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-200 focus:outline-none focus:border-blue-500 transition">
+                    </div>
+
+                    <div id="accountModalError"
+                        class="hidden text-xs text-red-400 bg-red-950/40 border border-red-800 rounded-lg p-2.5"></div>
+
+                    <button onclick="requestTelegramCode()" id="btnSendCode"
+                        class="w-full py-2.5 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-xl transition shadow-lg shadow-blue-600/20 flex items-center justify-center gap-2">
+                        <i class="fas fa-paper-plane"></i>
+                        <span id="btnSendCodeText">Request Login Code</span>
+                    </button>
                 </div>
 
-                <div>
-                    <div class="flex items-center justify-between mb-1">
-                        <label class="block text-xs font-semibold text-gray-300" id="lblOtpCode">Confirmation Code (OTP)</label>
-                        <button type="button" onclick="resendTelegramCode()" id="btnResendCode"
-                            class="text-[11px] text-cyan-400 hover:text-cyan-300 flex items-center gap-1 transition">
-                            <i class="fas fa-redo text-[10px]"></i>
-                            <span>Resend Code</span>
+                <!-- STEP 2: Enter Telegram OTP Code -->
+                <div id="stepAccountCode" class="space-y-4 hidden">
+                    <div class="text-center mb-4">
+                        <div
+                            class="w-12 h-12 mx-auto rounded-xl bg-cyan-500/10 text-cyan-400 flex items-center justify-center text-xl mb-2">
+                            <i class="fas fa-shield-alt"></i>
+                        </div>
+                        <h3 class="text-base font-bold text-white" id="titleStep2">Enter Login Code</h3>
+                        <p class="text-xs text-gray-400 mt-1" id="descStep2">Telegram sent a confirmation code for
+                            <span id="codeSentPhone" class="text-cyan-400 font-mono font-bold"></span>
+                        </p>
+                        <p class="text-[11px] text-cyan-300/80 mt-1" id="codeSentHint"></p>
+                    </div>
+
+                    <div>
+                        <div class="flex items-center justify-between mb-1">
+                            <label class="block text-xs font-semibold text-gray-300" id="lblOtpCode">Confirmation Code
+                                (OTP)</label>
+                            <button type="button" onclick="resendTelegramCode()" id="btnResendCode"
+                                class="text-[11px] text-cyan-400 hover:text-cyan-300 flex items-center gap-1 transition">
+                                <i class="fas fa-redo text-[10px]"></i>
+                                <span>Resend Code</span>
+                            </button>
+                        </div>
+                        <input type="text" id="inputOtpCode" placeholder="12345" inputmode="numeric"
+                            autocomplete="one-time-code" onkeydown="if(event.key==='Enter') verifyTelegramCode()"
+                            class="w-full bg-gray-900 border border-gray-700 rounded-lg px-3 py-2.5 text-center text-lg font-mono tracking-widest text-white focus:outline-none focus:border-cyan-500 transition">
+                        <p class="text-[10px] text-gray-500 mt-1">You can paste the whole message from Telegram; the
+                            code is extracted automatically.</p>
+                    </div>
+
+                    <!-- 2FA Password Field (Shown when required or toggled) -->
+                    <div id="field2FaPassword"
+                        class="hidden bg-amber-500/10 border border-amber-500/30 rounded-xl p-3 space-y-2">
+                        <div class="flex items-center justify-between">
+                            <label class="block text-xs font-semibold text-amber-300 flex items-center gap-1.5"
+                                id="lbl2FaPassword">
+                                <i class="fas fa-lock text-amber-400"></i>
+                                Two-Step Verification (2FA) Password
+                            </label>
+                            <span class="text-[10px] text-amber-400 font-bold px-1.5 py-0.5 rounded bg-amber-500/20">2FA
+                                Required</span>
+                        </div>
+                        <input type="password" id="input2FaPassword" placeholder="Enter your Telegram 2FA password"
+                            onkeydown="if(event.key==='Enter') verifyTelegramCode()"
+                            class="w-full bg-gray-900 border border-amber-600/50 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-amber-400 transition">
+                        <p class="text-[10px] text-gray-400" id="hint2FaPassword">
+                            This account is protected with a Two-Step Verification (2FA) password.
+                        </p>
+                    </div>
+
+                    <!-- Toggle to reveal 2FA field early -->
+                    <div class="flex justify-end" id="toggle2FaWrap">
+                        <button type="button" onclick="toggle2FaField()"
+                            class="text-[11px] text-gray-400 hover:text-amber-400 transition flex items-center gap-1">
+                            <i class="fas fa-key text-[10px]"></i>
+                            <span id="btnToggle2Fa">Account has 2FA? Click to enter password</span>
                         </button>
                     </div>
-                    <input type="text" id="inputOtpCode" placeholder="12345" inputmode="numeric" autocomplete="one-time-code"
-                        onkeydown="if(event.key==='Enter') verifyTelegramCode()"
-                        class="w-full bg-gray-900 border border-gray-700 rounded-lg px-3 py-2.5 text-center text-lg font-mono tracking-widest text-white focus:outline-none focus:border-cyan-500 transition">
-                    <p class="text-[10px] text-gray-500 mt-1">You can paste the whole message from Telegram; the code is extracted automatically.</p>
-                </div>
 
-                <!-- 2FA Password Field (Shown when required or toggled) -->
-                <div id="field2FaPassword" class="hidden bg-amber-500/10 border border-amber-500/30 rounded-xl p-3 space-y-2">
-                    <div class="flex items-center justify-between">
-                        <label class="block text-xs font-semibold text-amber-300 flex items-center gap-1.5" id="lbl2FaPassword">
-                            <i class="fas fa-lock text-amber-400"></i>
-                            Two-Step Verification (2FA) Password
-                        </label>
-                        <span class="text-[10px] text-amber-400 font-bold px-1.5 py-0.5 rounded bg-amber-500/20">2FA Required</span>
+                    <div id="codeModalError"
+                        class="hidden text-xs text-red-400 bg-red-950/40 border border-red-800 rounded-lg p-2.5"></div>
+
+                    <div class="flex gap-2">
+                        <button onclick="backToStep1()"
+                            class="px-4 py-2 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-xl text-xs font-semibold transition">
+                            <span id="btnBackStep1">Back</span>
+                        </button>
+                        <button onclick="verifyTelegramCode()" id="btnSubmitOtp"
+                            class="flex-1 py-2.5 bg-cyan-600 hover:bg-cyan-500 text-white font-bold rounded-xl transition shadow-lg shadow-cyan-600/20 flex items-center justify-center gap-2">
+                            <i class="fas fa-check-circle"></i>
+                            <span id="btnSubmitOtpText">Confirm Account</span>
+                        </button>
                     </div>
-                    <input type="password" id="input2FaPassword" placeholder="Enter your Telegram 2FA password"
-                        onkeydown="if(event.key==='Enter') verifyTelegramCode()"
-                        class="w-full bg-gray-900 border border-amber-600/50 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-amber-400 transition">
-                    <p class="text-[10px] text-gray-400" id="hint2FaPassword">
-                        This account is protected with a Two-Step Verification (2FA) password.
-                    </p>
                 </div>
-
-                <!-- Toggle to reveal 2FA field early -->
-                <div class="flex justify-end" id="toggle2FaWrap">
-                    <button type="button" onclick="toggle2FaField()" class="text-[11px] text-gray-400 hover:text-amber-400 transition flex items-center gap-1">
-                        <i class="fas fa-key text-[10px]"></i>
-                        <span id="btnToggle2Fa">Account has 2FA? Click to enter password</span>
-                    </button>
-                </div>
-
-                <div id="codeModalError"
-                    class="hidden text-xs text-red-400 bg-red-950/40 border border-red-800 rounded-lg p-2.5"></div>
-
-                <div class="flex gap-2">
-                    <button onclick="backToStep1()"
-                        class="px-4 py-2 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-xl text-xs font-semibold transition">
-                        <span id="btnBackStep1">Back</span>
-                    </button>
-                    <button onclick="verifyTelegramCode()" id="btnSubmitOtp"
-                        class="flex-1 py-2.5 bg-cyan-600 hover:bg-cyan-500 text-white font-bold rounded-xl transition shadow-lg shadow-cyan-600/20 flex items-center justify-center gap-2">
-                        <i class="fas fa-check-circle"></i>
-                        <span id="btnSubmitOtpText">Confirm Account</span>
-                    </button>
-                </div>
-            </div>
             </div> <!-- End panelLoginPhone -->
 
         </div>
@@ -734,7 +764,8 @@
     <!-- ============================================================== -->
     <div id="summaryModal"
         class="fixed inset-0 bg-black/85 backdrop-blur-sm z-50 flex items-center justify-center p-3 sm:p-4 hidden">
-        <div class="bg-[#111827] border border-gray-700 rounded-2xl w-full max-w-lg max-h-[92vh] overflow-y-auto p-4 sm:p-6 shadow-2xl relative modal-animate-enter">
+        <div
+            class="bg-[#111827] border border-gray-700 rounded-2xl w-full max-w-lg max-h-[92vh] overflow-y-auto p-4 sm:p-6 shadow-2xl relative modal-animate-enter">
             <button onclick="closeSummaryModal()"
                 class="absolute top-4 right-4 text-gray-400 hover:text-white transition">
                 <i class="fas fa-times"></i>
