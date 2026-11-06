@@ -15,6 +15,10 @@ from pydantic import BaseModel
 
 import license_manager
 import telegram_engine
+import bot
+import logging
+
+logger = logging.getLogger("telegram_adder")
 
 BASE_DIR = Path(__file__).parent
 TEMPLATES_DIR = BASE_DIR / "templates"
@@ -523,24 +527,106 @@ async def health_check():
 
 
 async def render_keep_alive_task():
-    """Keeps Render cloud server awake 24/7 by self-pinging every 9 minutes."""
+    """Keeps Render cloud server awake 24/7 by self-pinging every 3 minutes (Render sleeps after 15m)."""
     render_url = os.environ.get("RENDER_EXTERNAL_URL", "").strip()
     if not render_url:
-        return
+        hostname = os.environ.get("RENDER_EXTERNAL_HOSTNAME", "").strip()
+        if hostname:
+            render_url = f"https://{hostname}"
+        else:
+            render_url = os.environ.get("BACKEND_URL", "https://telegram-adder-web.onrender.com").strip()
+
     ping_url = f"{render_url.rstrip('/')}/api/health"
-    await asyncio.sleep(60)
+    vercel_ping_url = "https://telegram-member.vercel.app/api/health"
+
+    await asyncio.sleep(20)
     async with httpx.AsyncClient(timeout=20) as client:
         while True:
             try:
                 await client.get(ping_url)
             except Exception:
                 pass
-            await asyncio.sleep(540)  # Ping every 9 minutes
+            try:
+                await client.get(vercel_ping_url)
+            except Exception:
+                pass
+            await asyncio.sleep(180)  # Ping every 3 minutes (180s)
 
 
 @app.on_event("startup")
 async def on_app_startup():
     asyncio.create_task(render_keep_alive_task())
+
+
+# ==========================================
+# Telegram Bot Webhook (24/7 Always-On Serverless)
+# ==========================================
+@app.post("/api/telegram-webhook")
+async def telegram_webhook_handler(req: Request):
+    """
+    Receives incoming Telegram updates via Webhook.
+    Runs 24/7 serverless on Vercel without requiring a running PC or background worker!
+    """
+    try:
+        data = await req.json()
+    except Exception:
+        return {"ok": False, "error": "Invalid JSON"}
+
+    if not data or not isinstance(data, dict):
+        return {"ok": False, "error": "Empty update"}
+
+    async with httpx.AsyncClient(timeout=30) as client:
+        try:
+            await bot.process_update(client, data)
+        except Exception as exc:
+            logger.error(f"Error processing webhook update: {exc}", exc_info=True)
+
+    return {"ok": True}
+
+
+@app.get("/api/telegram-webhook/info")
+async def telegram_webhook_info():
+    """Returns current Telegram Webhook info from Telegram servers."""
+    async with httpx.AsyncClient(timeout=15) as client:
+        resp = await client.get(f"https://api.telegram.org/bot{bot.BOT_TOKEN}/getWebhookInfo")
+        return resp.json()
+
+
+@app.post("/api/telegram-webhook/setup")
+async def telegram_webhook_setup(req: Request):
+    """
+    Activates Telegram Webhook (defaults to https://telegram-member.vercel.app/api/telegram-webhook).
+    Enables instant 24/7 serverless bot availability!
+    """
+    body = {}
+    try:
+        body = await req.json()
+    except Exception:
+        pass
+
+    custom_url = body.get("url", "").strip() if isinstance(body, dict) else ""
+    if not custom_url:
+        host = req.headers.get("x-forwarded-host") or req.headers.get("host") or ""
+        proto = req.headers.get("x-forwarded-proto") or "https"
+        if host and "127.0.0.1" not in host and "localhost" not in host:
+            custom_url = f"{proto}://{host}/api/telegram-webhook"
+        else:
+            custom_url = "https://telegram-member.vercel.app/api/telegram-webhook"
+
+    async with httpx.AsyncClient(timeout=15) as client:
+        resp = await client.post(
+            f"https://api.telegram.org/bot{bot.BOT_TOKEN}/setWebhook",
+            json={"url": custom_url, "allowed_updates": ["message", "callback_query"]}
+        )
+        return {"configured_url": custom_url, "telegram_response": resp.json()}
+
+
+@app.post("/api/telegram-webhook/delete")
+async def telegram_webhook_delete():
+    """Deletes Telegram Webhook so local bot.py can use getUpdates long-polling."""
+    async with httpx.AsyncClient(timeout=15) as client:
+        resp = await client.post(f"https://api.telegram.org/bot{bot.BOT_TOKEN}/deleteWebhook")
+        return resp.json()
 
 
 # ==========================================

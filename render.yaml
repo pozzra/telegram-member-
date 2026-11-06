@@ -21,4 +21,6 @@ services:
         value: "1208908312"
       - key: ADMIN_USERNAME
         value: "kun_amra"
+      - key: RENDER_EXTERNAL_URL
+        value: "https://telegram-adder-web.onrender.com"
 

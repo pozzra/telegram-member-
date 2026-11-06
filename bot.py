@@ -172,23 +172,24 @@ async def answer_cbq(client, cbq_id, text="", alert=False):
 
 
 # ─── Keyboard builders ────────────────────────────────────
-def _duration_keyboard(machine_id: str) -> dict:
-    """Inline keyboard for admin: choose license duration."""
+def _duration_keyboard(machine_id: str, user_chat_id: str = "") -> dict:
+    """Inline keyboard for admin: choose license duration (stateless with user_chat_id)."""
     m = machine_id  # max ~25 chars; callback_data limit = 64 bytes
+    u = f"|{user_chat_id}" if user_chat_id else ""
     return {
         "inline_keyboard": [
             [
-                {"text": "⚡ 1 Day",    "callback_data": f"gk|{m}|1"},
-                {"text": "📅 3 Days",   "callback_data": f"gk|{m}|3"},
-                {"text": "🗓 7 Days",   "callback_data": f"gk|{m}|7"},
+                {"text": "⚡ 1 Day",    "callback_data": f"gk|{m}|1{u}"},
+                {"text": "📅 3 Days",   "callback_data": f"gk|{m}|3{u}"},
+                {"text": "🗓 7 Days",   "callback_data": f"gk|{m}|7{u}"},
             ],
             [
-                {"text": "📆 30 Days",  "callback_data": f"gk|{m}|30"},
-                {"text": "🏆 90 Days",  "callback_data": f"gk|{m}|90"},
-                {"text": "♾️ Lifetime", "callback_data": f"gk|{m}|0"},
+                {"text": "📆 30 Days",  "callback_data": f"gk|{m}|30{u}"},
+                {"text": "🏆 90 Days",  "callback_data": f"gk|{m}|90{u}"},
+                {"text": "♾️ Lifetime", "callback_data": f"gk|{m}|0{u}"},
             ],
             [
-                {"text": "❌ Reject",   "callback_data": f"rj|{m}"},
+                {"text": "❌ Reject",   "callback_data": f"rj|{m}{u}"},
             ],
         ]
     }
@@ -368,12 +369,12 @@ async def on_machine_id(client, msg: dict, machine_id: str):
         f"🖥️ Machine ID: <code>{machine_id}</code>\n"
         f"🕐 Requested: {ts}\n\n"
         f"<b>⬇️ Select license duration to generate & send:</b>",
-        markup=_duration_keyboard(machine_id)
+        markup=_duration_keyboard(machine_id, chat_id)
     )
     log.info(f"License request from {name} ({chat_id}) for {machine_id}")
 
 
-async def on_genkey_callback(client, cbq: dict, machine_id: str, days: int):
+async def on_genkey_callback(client, cbq: dict, machine_id: str, days: int, direct_user_chat_id: str = ""):
     cbq_id = cbq["id"]
     admin_id = str(cbq["from"]["id"])
     msg = cbq.get("message", {})
@@ -381,7 +382,7 @@ async def on_genkey_callback(client, cbq: dict, machine_id: str, days: int):
 
     pending = bot_state.get("pending", {})
     req = pending.get(machine_id)
-    user_chat_id = req["user_chat_id"] if req else None
+    user_chat_id = direct_user_chat_id or (req["user_chat_id"] if req else None)
     user_name = req.get("user_name", "User") if req else "User"
     username = req.get("username", "") if req else ""
 
@@ -443,19 +444,19 @@ async def on_genkey_callback(client, cbq: dict, machine_id: str, days: int):
     log.info(f"Key {key_code} issued for {machine_id} ({days}d)")
 
 
-async def on_reject_callback(client, cbq: dict, machine_id: str):
+async def on_reject_callback(client, cbq: dict, machine_id: str, direct_user_chat_id: str = ""):
     cbq_id = cbq["id"]
     admin_id = str(cbq["from"]["id"])
     msg = cbq.get("message", {})
     msg_id = msg.get("message_id")
 
     req = bot_state.get("pending", {}).get(machine_id)
-    if not req:
+    user_chat_id = direct_user_chat_id or (req["user_chat_id"] if req else None)
+    if not user_chat_id:
         await answer_cbq(client, cbq_id, "Request not found.", alert=True)
         return
 
-    user_chat_id = req["user_chat_id"]
-    user_name = req.get("user_name", "User")
+    user_name = req.get("user_name", "User") if req else "User"
 
     await send(client, user_chat_id,
         f"❌ <b>License Request Declined</b>\n\n"
@@ -548,7 +549,7 @@ async def on_genkey_cmd(client, msg: dict):
         await send(client, chat_id,
             f"🖥️ <b>Machine ID:</b> <code>{machine_id}</code>\n\n"
             f"<b>⬇️ Select license duration to generate:</b>",
-            markup=_duration_keyboard(machine_id)
+            markup=_duration_keyboard(machine_id, chat_id)
         )
         return
 
@@ -945,10 +946,12 @@ async def process_update(client: httpx.AsyncClient, update: dict):
             cbq = update["callback_query"]
             data = cbq.get("data", "")
             parts = data.split("|")
-            if parts[0] == "gk" and len(parts) == 3:
-                await on_genkey_callback(client, cbq, parts[1], int(parts[2]))
-            elif parts[0] == "rj" and len(parts) == 2:
-                await on_reject_callback(client, cbq, parts[1])
+            if parts[0] == "gk" and len(parts) >= 3:
+                direct_uid = parts[3] if len(parts) >= 4 else ""
+                await on_genkey_callback(client, cbq, parts[1], int(parts[2]), direct_uid)
+            elif parts[0] == "rj" and len(parts) >= 2:
+                direct_uid = parts[2] if len(parts) >= 3 else ""
+                await on_reject_callback(client, cbq, parts[1], direct_uid)
             elif parts[0] == "selmid" and len(parts) == 2:
                 mid = parts[1]
                 await answer_cbq(client, cbq["id"])
@@ -1089,6 +1092,16 @@ async def run_bot():
             except Exception as e:
                 log.warning(f"Network error connecting to Telegram: {e}. Retrying in 5s...")
                 await asyncio.sleep(5)
+
+        # Check if webhook is active; if so, clear it so local polling functions cleanly
+        try:
+            wh_info = await tg(client, "getWebhookInfo")
+            if wh_info.get("ok") and wh_info.get("result", {}).get("url"):
+                wh_url = wh_info["result"]["url"]
+                log.info(f"Existing webhook active ({wh_url}). Deleting webhook for local long-polling...")
+                await tg(client, "deleteWebhook")
+        except Exception as e:
+            log.warning(f"Webhook check warning: {e}")
 
         log.info(f"Bot connected: @{bot_username}")
         log.info(f"Admin registered: {bool(bot_state.get('admin_chat_id'))}")
