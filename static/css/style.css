@@ -5,6 +5,14 @@
 :root {
     --safe-area-inset-top: env(safe-area-inset-top, 0px);
     --safe-area-inset-bottom: env(safe-area-inset-bottom, 0px);
+
+    /* Motion tokens — UI feedback stays in the 150-340ms band */
+    --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+    --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+    --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+    --dur-fast: 150ms;
+    --dur-base: 220ms;
+    --dur-slow: 340ms;
 }
 
 html {
@@ -40,7 +48,10 @@ code, pre, .font-mono {
     background: #06b6d4;
 }
 
-/* Smooth Animations */
+/* ==========================================
+   Motion system
+   ========================================== */
+
 @keyframes fadeIn {
     from {
         opacity: 0;
@@ -53,23 +64,133 @@ code, pre, .font-mono {
 }
 
 .animate-fade-in {
-    animation: fadeIn 0.18s ease-out forwards;
+    animation: fadeIn var(--dur-fast) var(--ease-out) backwards;
 }
 
-@keyframes modalEnter {
-    0% {
+/* Page-load entrance — gated behind no-preference so reduced-motion users
+   see the content immediately instead of after the animation delay. */
+@keyframes entrance {
+    from {
         opacity: 0;
-        transform: scale(0.94) translateY(10px);
+        transform: translateY(16px);
     }
-    100% {
+    to {
         opacity: 1;
-        transform: scale(1) translateY(0);
+        transform: translateY(0);
     }
 }
 
-.modal-animate-enter {
-    animation: modalEnter 0.22s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+@media (prefers-reduced-motion: no-preference) {
+    .animate-entrance {
+        animation: entrance var(--dur-slow) var(--ease-out) backwards;
+    }
+
+    .stagger-1 { animation-delay: 60ms; }
+    .stagger-2 { animation-delay: 120ms; }
+    .stagger-3 { animation-delay: 180ms; }
+    .stagger-4 { animation-delay: 240ms; }
+    .stagger-5 { animation-delay: 300ms; }
 }
+
+/* ==========================================
+   Modal system (enter / exit driven by .is-open)
+   ========================================== */
+.modal-overlay {
+    opacity: 0;
+    transition: opacity var(--dur-base) var(--ease-in-out);
+}
+
+.modal-overlay.is-open {
+    opacity: 1;
+}
+
+.modal-backdrop {
+    opacity: 0;
+    transition: opacity var(--dur-base) var(--ease-in-out);
+}
+
+.modal-overlay.is-open .modal-backdrop {
+    opacity: 1;
+}
+
+.modal-panel {
+    opacity: 0;
+    transform: translateY(18px) scale(0.95);
+    transition: transform var(--dur-slow) var(--ease-spring), opacity var(--dur-base) var(--ease-out);
+    will-change: transform, opacity;
+}
+
+.modal-overlay.is-open .modal-panel {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+}
+
+/* ==========================================
+   Toast notifications
+   ========================================== */
+.toast-container {
+    position: fixed;
+    top: calc(0.9rem + var(--safe-area-inset-top));
+    right: 0.9rem;
+    z-index: 100;
+    display: flex;
+    flex-direction: column;
+    gap: 0.625rem;
+    pointer-events: none;
+    max-width: min(92vw, 380px);
+}
+
+.toast {
+    pointer-events: auto;
+    display: flex;
+    align-items: flex-start;
+    gap: 0.625rem;
+    padding: 0.75rem 0.9rem;
+    border-radius: 0.75rem;
+    border: 1px solid rgba(55, 65, 81, 0.9);
+    background: rgba(17, 24, 39, 0.96);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    box-shadow: 0 16px 40px -12px rgba(0, 0, 0, 0.7);
+    font-size: 0.8125rem;
+    line-height: 1.45;
+    color: #e5e7eb;
+    opacity: 0;
+    transform: translateX(28px) scale(0.98);
+    transition: opacity var(--dur-base) var(--ease-out), transform var(--dur-base) var(--ease-out);
+}
+
+.toast.show {
+    opacity: 1;
+    transform: translateX(0) scale(1);
+}
+
+.toast.hide {
+    opacity: 0;
+    transform: translateX(28px) scale(0.98);
+}
+
+.toast-icon {
+    margin-top: 0.1rem;
+    font-size: 0.95rem;
+    flex-shrink: 0;
+}
+
+.toast-success { border-color: rgba(16, 185, 129, 0.45); }
+.toast-success .toast-icon { color: #34d399; }
+
+.toast-error { border-color: rgba(239, 68, 68, 0.45); }
+.toast-error .toast-icon { color: #f87171; }
+
+.toast-warning { border-color: rgba(245, 158, 11, 0.45); }
+.toast-warning .toast-icon { color: #fbbf24; }
+
+.toast-info { border-color: rgba(6, 182, 212, 0.4); }
+.toast-info .toast-icon { color: #22d3ee; }
+
+/* ==========================================
+   Ambient / status animations
+   ========================================== */
 
 /* Futuristic Ambient Aura Glow */
 @keyframes auraPulse {
@@ -125,6 +246,27 @@ code, pre, .font-mono {
     animation: progressStripes 1s linear infinite;
 }
 
+/* Moving shine sweep across the progress fill */
+@keyframes progressShine {
+    0% { transform: translateX(-100%); }
+    100% { transform: translateX(100%); }
+}
+
+#jobProgressBar {
+    position: relative;
+    overflow: hidden;
+}
+
+#jobProgressBar.animate-stripes::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(90deg, transparent 0%, rgba(255, 255, 255, 0.35) 50%, transparent 100%);
+    transform: translateX(-100%);
+    animation: progressShine 1.8s var(--ease-in-out) infinite;
+    pointer-events: none;
+}
+
 /* Button Shimmer */
 @keyframes btnShimmer {
     0% {
@@ -138,6 +280,42 @@ code, pre, .font-mono {
 .btn-shimmer {
     background-size: 200% auto;
     animation: btnShimmer 3s ease-in-out infinite;
+}
+
+/* Console log slide-in */
+@keyframes logIn {
+    from {
+        opacity: 0;
+        transform: translateX(-8px);
+    }
+    to {
+        opacity: 1;
+        transform: translateX(0);
+    }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+    .log-item {
+        animation: logIn var(--dur-base) var(--ease-out) backwards;
+    }
+}
+
+/* Account row entrance (applied only on the first render) */
+@keyframes itemIn {
+    from {
+        opacity: 0;
+        transform: translateY(10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+    .account-item {
+        animation: itemIn 260ms var(--ease-out) backwards;
+    }
 }
 
 /* Glow effects */
@@ -163,10 +341,11 @@ code, pre, .font-mono {
 
 /* Interactive Card Micro-interactions */
 .interactive-card {
-    transition: transform 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+    transition: transform var(--dur-base) var(--ease-out), border-color var(--dur-base) var(--ease-out), box-shadow var(--dur-base) var(--ease-out);
 }
 
 .interactive-card:hover {
+    transform: translateY(-2px);
     border-color: rgba(6, 182, 212, 0.4);
     box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.5), 0 0 15px -3px rgba(6, 182, 212, 0.15);
 }
@@ -176,13 +355,33 @@ button, input, select, textarea {
     touch-action: manipulation;
 }
 
+button {
+    transition: transform var(--dur-fast) var(--ease-out);
+}
+
 button:active {
     transform: scale(0.97);
+}
+
+/* Visible keyboard focus */
+:focus-visible {
+    outline: 2px solid rgba(6, 182, 212, 0.7);
+    outline-offset: 2px;
 }
 
 /* Safe viewport height for mobile keyboards */
 @supports (height: 100dvh) {
     .min-h-screen-dvh {
         min-height: 100dvh;
+    }
+}
+
+/* Respect users who prefer less motion */
+@media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+        scroll-behavior: auto !important;
     }
 }

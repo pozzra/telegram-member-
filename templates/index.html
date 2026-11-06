@@ -15,9 +15,9 @@
     <!-- Font Awesome Icons -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <!-- Custom Style -->
-    <link rel="stylesheet" href="/static/css/style.css?v=3.3.1">
+    <link rel="stylesheet" href="/static/css/style.css?v=3.4.0">
     <!-- App JavaScript loaded in head to ensure functions are ready before user interactions -->
-    <script src="/static/js/app.js?v=3.3.1"></script>
+    <script src="/static/js/app.js?v=3.4.0"></script>
 </head>
 
 <body
@@ -123,7 +123,7 @@
 
                 <!-- Account Management Card -->
                 <div
-                    class="bg-[#111827]/90 backdrop-blur-md rounded-2xl border border-gray-800 p-3.5 sm:p-5 shadow-xl relative overflow-hidden interactive-card">
+                    class="animate-entrance stagger-1 bg-[#111827]/90 backdrop-blur-md rounded-2xl border border-gray-800 p-3.5 sm:p-5 shadow-xl relative overflow-hidden interactive-card">
                     <div class="flex items-center justify-between mb-4">
                         <div class="flex items-center gap-2">
                             <div
@@ -182,7 +182,7 @@
 
                 <!-- 1. Source Group Scraper Card -->
                 <div
-                    class="bg-[#111827]/90 backdrop-blur-md rounded-2xl border border-gray-800 p-3.5 sm:p-5 shadow-xl interactive-card">
+                    class="animate-entrance stagger-2 bg-[#111827]/90 backdrop-blur-md rounded-2xl border border-gray-800 p-3.5 sm:p-5 shadow-xl interactive-card">
                     <div class="flex items-center gap-2 mb-3">
                         <div
                             class="w-8 h-8 rounded-lg bg-emerald-500/10 text-emerald-400 flex items-center justify-center">
@@ -212,7 +212,7 @@
 
                 <!-- 2. Member Candidates List Card -->
                 <div
-                    class="bg-[#111827]/90 backdrop-blur-md rounded-2xl border border-gray-800 p-3.5 sm:p-5 shadow-xl interactive-card">
+                    class="animate-entrance stagger-3 bg-[#111827]/90 backdrop-blur-md rounded-2xl border border-gray-800 p-3.5 sm:p-5 shadow-xl interactive-card">
                     <div class="flex items-center justify-between mb-2">
                         <div class="flex items-center gap-2">
                             <div
@@ -263,7 +263,7 @@
 
                 <!-- 3. Target Group & Adding Engine -->
                 <div
-                    class="bg-[#111827]/90 backdrop-blur-md rounded-2xl border border-gray-800 p-3.5 sm:p-5 shadow-xl space-y-4 interactive-card">
+                    class="animate-entrance stagger-4 bg-[#111827]/90 backdrop-blur-md rounded-2xl border border-gray-800 p-3.5 sm:p-5 shadow-xl space-y-4 interactive-card">
                     <div class="flex items-center gap-2">
                         <div class="w-8 h-8 rounded-lg bg-blue-500/10 text-blue-400 flex items-center justify-center">
                             <i class="fas fa-user-plus"></i>
@@ -372,7 +372,7 @@
     </main>
 
     <!-- Footer -->
-    <footer class="border-t border-gray-800 py-4 text-center text-xs text-gray-500 bg-[#0d121c]">
+    <footer class="animate-entrance stagger-5 border-t border-gray-800 py-4 text-center text-xs text-gray-500 bg-[#0d121c]">
         Telegram Member Manager Web • Designed for speed, safety & stability • Contact Admin:
         <a href="https://t.me/kun_amra" target="_blank" class="text-cyan-400 hover:underline">@kun_amra</a>
     </footer>
@@ -381,9 +381,10 @@
     <!-- MODAL 1: License Activation Modal -->
     <!-- ============================================================== -->
     <div id="licenseModal"
-        class="fixed inset-0 bg-black/85 backdrop-blur-sm z-50 flex items-center justify-center p-3 sm:p-4 hidden">
+        class="modal-overlay fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 hidden">
+        <div class="modal-backdrop absolute inset-0 bg-black/85 backdrop-blur-sm"></div>
         <div
-            class="bg-[#111827] border border-cyan-500/40 rounded-2xl w-full max-w-md max-h-[92vh] overflow-y-auto p-4 sm:p-6 shadow-2xl relative modal-animate-enter">
+            class="modal-panel relative bg-[#111827] border border-cyan-500/40 rounded-2xl w-full max-w-md max-h-[92vh] overflow-y-auto p-4 sm:p-6 shadow-2xl">
             <button onclick="closeLicenseModal()"
                 class="absolute top-4 right-4 text-gray-400 hover:text-white transition">
                 <i class="fas fa-times"></i>
@@ -471,9 +472,10 @@
     <!-- MODAL 2: Add Telegram Account Modal (Multi-Step Wizard) -->
     <!-- ============================================================== -->
     <div id="addAccountModal"
-        class="fixed inset-0 bg-black/85 backdrop-blur-sm z-50 flex items-center justify-center p-3 sm:p-4 hidden">
+        class="modal-overlay fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 hidden">
+        <div class="modal-backdrop absolute inset-0 bg-black/85 backdrop-blur-sm"></div>
         <div
-            class="bg-[#111827] border border-gray-700 rounded-2xl w-full max-w-md max-h-[92vh] overflow-y-auto p-4 sm:p-6 shadow-2xl relative modal-animate-enter">
+            class="modal-panel relative bg-[#111827] border border-gray-700 rounded-2xl w-full max-w-md max-h-[92vh] overflow-y-auto p-4 sm:p-6 shadow-2xl">
             <button onclick="closeAddAccountModal()"
                 class="absolute top-4 right-4 text-gray-400 hover:text-white transition">
                 <i class="fas fa-times"></i>
@@ -767,9 +769,10 @@
     <!-- MODAL 3: Summary Breakdown Report Modal -->
     <!-- ============================================================== -->
     <div id="summaryModal"
-        class="fixed inset-0 bg-black/85 backdrop-blur-sm z-50 flex items-center justify-center p-3 sm:p-4 hidden">
+        class="modal-overlay fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 hidden">
+        <div class="modal-backdrop absolute inset-0 bg-black/85 backdrop-blur-sm"></div>
         <div
-            class="bg-[#111827] border border-gray-700 rounded-2xl w-full max-w-lg max-h-[92vh] overflow-y-auto p-4 sm:p-6 shadow-2xl relative modal-animate-enter">
+            class="modal-panel relative bg-[#111827] border border-gray-700 rounded-2xl w-full max-w-lg max-h-[92vh] overflow-y-auto p-4 sm:p-6 shadow-2xl">
             <button onclick="closeSummaryModal()"
                 class="absolute top-4 right-4 text-gray-400 hover:text-white transition">
                 <i class="fas fa-times"></i>
@@ -810,6 +813,9 @@
             </div>
         </div>
     </div>
+
+    <!-- Toast notifications -->
+    <div id="toastContainer" class="toast-container" aria-live="polite" aria-atomic="false"></div>
 
     <!-- App JavaScript with Cache Busting -->
 </body>

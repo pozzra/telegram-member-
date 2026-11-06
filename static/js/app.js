@@ -26,6 +26,105 @@ let currentAccounts = [];
 let websocket = null;
 let isJobRunning = false;
 let wsEverOpened = false; // Track whether the WS ever connected (avoid endless retry on serverless)
+let accountsEntranceDone = false; // Only stagger the account list on its first render
+
+// ==========================================
+// Modal animation helpers
+// ==========================================
+const modalHideTimers = new WeakMap();
+const reduceMotionQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
+
+function openModalEl(el) {
+    if (!el) return;
+    const timer = modalHideTimers.get(el);
+    if (timer) {
+        clearTimeout(timer);
+        modalHideTimers.delete(el);
+    }
+    el.classList.remove("hidden");
+    // Force reflow so the enter transition runs from the hidden state.
+    void el.offsetWidth;
+    el.classList.add("is-open");
+}
+
+function closeModalEl(el) {
+    if (!el) return;
+    el.classList.remove("is-open");
+    const delay = reduceMotionQuery.matches ? 0 : 220;
+    const timer = setTimeout(() => el.classList.add("hidden"), delay);
+    modalHideTimers.set(el, timer);
+}
+
+// Re-trigger the fade/slide transition on a panel that was just un-hidden.
+function revealPanel(panel) {
+    if (!panel) return;
+    panel.classList.remove("hidden", "animate-fade-in");
+    void panel.offsetWidth;
+    panel.classList.add("animate-fade-in");
+}
+
+// ==========================================
+// Toast notifications
+// ==========================================
+const TOAST_ICONS = {
+    success: "fa-check-circle",
+    error: "fa-exclamation-circle",
+    warning: "fa-exclamation-triangle",
+    info: "fa-info-circle"
+};
+
+function showToast(message, type = "info", duration = 4000) {
+    const container = document.getElementById("toastContainer");
+    if (!container) {
+        alert(message);
+        return;
+    }
+
+    const toast = document.createElement("div");
+    toast.className = `toast toast-${type}`;
+    toast.setAttribute("role", type === "error" ? "alert" : "status");
+
+    const icon = document.createElement("i");
+    icon.className = `fas ${TOAST_ICONS[type] || TOAST_ICONS.info} toast-icon`;
+
+    const body = document.createElement("span");
+    body.className = "flex-1";
+    body.textContent = message; // textContent avoids injecting server strings as HTML
+
+    toast.appendChild(icon);
+    toast.appendChild(body);
+    container.appendChild(toast);
+
+    // Two rAFs so the entering transition plays from the hidden state.
+    requestAnimationFrame(() => requestAnimationFrame(() => toast.classList.add("show")));
+
+    setTimeout(() => {
+        toast.classList.add("hide");
+        setTimeout(() => toast.remove(), reduceMotionQuery.matches ? 0 : 240);
+    }, duration);
+}
+
+// ==========================================
+// Number count-up (summary moment)
+// ==========================================
+function tweenNumber(el, to, { suffix = "", decimals = 0, duration = 650 } = {}) {
+    if (!el) return;
+    const from = parseFloat(el.dataset.value || "0") || 0;
+    el.dataset.value = to;
+    if (reduceMotionQuery.matches) {
+        el.innerText = to.toFixed(decimals) + suffix;
+        return;
+    }
+    const start = performance.now();
+    function frame(now) {
+        const t = Math.min(1, (now - start) / duration);
+        const eased = 1 - Math.pow(1 - t, 3);
+        const val = from + (to - from) * eased;
+        el.innerText = val.toFixed(decimals) + suffix;
+        if (t < 1) requestAnimationFrame(frame);
+    }
+    requestAnimationFrame(frame);
+}
 
 // ==========================================
 // Machine ID (Device Fingerprint)
@@ -476,11 +575,11 @@ function openLicenseModal() {
     if (succEl) succEl.classList.add("hidden");
     // Render machine ID inside modal
     renderMachineId();
-    document.getElementById("licenseModal").classList.remove("hidden");
+    openModalEl(document.getElementById("licenseModal"));
 }
 
 function closeLicenseModal() {
-    document.getElementById("licenseModal").classList.add("hidden");
+    closeModalEl(document.getElementById("licenseModal"));
 }
 
 function fillDemoKey(key) {
@@ -660,7 +759,11 @@ function renderAccounts(accounts) {
         return;
     }
 
-    listEl.innerHTML = accounts.map(acc => {
+    // Stagger only the first render — re-renders (toggles, deletes) stay instant.
+    const animateItems = !accountsEntranceDone;
+    if (animateItems) accountsEntranceDone = true;
+
+    listEl.innerHTML = accounts.map((acc, i) => {
         const isPrem    = acc.is_premium;
         const isSpam    = acc.spam_flagged;
         const isDisabled = !acc.enabled;
@@ -696,8 +799,13 @@ function renderAccounts(accounts) {
                </button>`
             : "";
 
+        const itemAnimClass = animateItems ? "account-item" : "";
+        const itemAnimStyle = animateItems
+            ? `style="animation-delay: ${Math.min(i, 12) * 40}ms"`
+            : "";
+
         return `
-            <div class="${cardBorder} border rounded-xl p-3 flex items-center justify-between gap-3 hover:border-gray-700 transition">
+            <div class="${itemAnimClass} ${cardBorder} border rounded-xl p-3 flex items-center justify-between gap-3 hover:border-gray-700 transition" ${itemAnimStyle}>
                 <div class="flex items-center gap-3 min-w-0">
                     <div class="w-9 h-9 rounded-full ${avatarColor} flex items-center justify-center font-bold text-xs shrink-0">
                         ${acc.first_name ? acc.first_name.charAt(0).toUpperCase() : 'T'}
@@ -886,7 +994,7 @@ function openAddAccountModal() {
     const hint = document.getElementById("codeSentHint");
     if (hint) hint.innerText = "";
 
-    document.getElementById("addAccountModal").classList.remove("hidden");
+    openModalEl(document.getElementById("addAccountModal"));
 
     // Auto-fill official default API credentials if empty for convenience
     const idInput = document.getElementById("inputApiId");
@@ -914,7 +1022,7 @@ function cancelQrSession(qrId) {
 }
 
 function closeAddAccountModal() {
-    document.getElementById("addAccountModal").classList.add("hidden");
+    closeModalEl(document.getElementById("addAccountModal"));
     if (qrPollTimer) {
         clearInterval(qrPollTimer);
         qrPollTimer = null;
@@ -947,7 +1055,7 @@ function switchLoginMode(mode) {
     if (mode === "qr") {
         if (tabQr) tabQr.className = "flex-1 py-1.5 text-xs font-semibold rounded-lg transition bg-cyan-600 text-white shadow-sm flex items-center justify-center gap-1.5";
         if (tabPhone) tabPhone.className = "flex-1 py-1.5 text-xs font-semibold rounded-lg transition text-gray-400 hover:text-white flex items-center justify-center gap-1.5";
-        if (panelQr) panelQr.classList.remove("hidden");
+        if (panelQr) revealPanel(panelQr);
         if (panelPhone) panelPhone.classList.add("hidden");
         qrAutoRefreshCount = 0;
         if (!currentQrId && !qrStarting) {
@@ -956,7 +1064,7 @@ function switchLoginMode(mode) {
     } else {
         if (tabPhone) tabPhone.className = "flex-1 py-1.5 text-xs font-semibold rounded-lg transition bg-cyan-600 text-white shadow-sm flex items-center justify-center gap-1.5";
         if (tabQr) tabQr.className = "flex-1 py-1.5 text-xs font-semibold rounded-lg transition text-gray-400 hover:text-white flex items-center justify-center gap-1.5";
-        if (panelPhone) panelPhone.classList.remove("hidden");
+        if (panelPhone) revealPanel(panelPhone);
         if (panelQr) panelQr.classList.add("hidden");
         if (qrPollTimer) {
             clearInterval(qrPollTimer);
@@ -1240,7 +1348,7 @@ async function submitQr2FaPassword() {
 }
 
 function backToStep1() {
-    document.getElementById("stepAccountCredentials").classList.remove("hidden");
+    revealPanel(document.getElementById("stepAccountCredentials"));
     document.getElementById("stepAccountCode").classList.add("hidden");
     document.getElementById("codeModalError").classList.add("hidden");
 }
@@ -1274,7 +1382,7 @@ async function requestTelegramCode(triggerButtonId = "btnSendCode", isResend = f
             : "Please fill in API ID, API Hash, and Phone Number.";
         errBox.classList.remove("hidden");
         if (!isResend) {
-            document.getElementById("stepAccountCredentials").classList.remove("hidden");
+            revealPanel(document.getElementById("stepAccountCredentials"));
             document.getElementById("stepAccountCode").classList.add("hidden");
         }
         return;
@@ -1337,7 +1445,7 @@ async function requestTelegramCode(triggerButtonId = "btnSendCode", isResend = f
 
                 // Switch view to Step 2 (Enter OTP code)
                 document.getElementById("stepAccountCredentials").classList.add("hidden");
-                document.getElementById("stepAccountCode").classList.remove("hidden");
+                revealPanel(document.getElementById("stepAccountCode"));
                 document.getElementById("btnSubmitOtp").innerHTML = `<i class="fas fa-check-circle"></i> <span id="btnSubmitOtpText">${I18N[currentLanguage].btnSubmitOtpText || 'Confirm Account'}</span>`;
 
                 // Auto-focus OTP input
@@ -1517,7 +1625,7 @@ async function fetchSourceMembers() {
     const btn = document.getElementById("btnFetchMembers");
 
     if (!sourceGroup) {
-        alert(currentLanguage === "km" ? "សូមបញ្ចូលតំណភ្ជាប់ក្រុមប្រភព!" : "Please enter the source group link or username!");
+        showToast(currentLanguage === "km" ? "សូមបញ្ចូលតំណភ្ជាប់ក្រុមប្រភព!" : "Please enter the source group link or username!", "warning");
         return;
     }
 
@@ -1564,14 +1672,14 @@ async function fetchSourceMembers() {
                 const promptMsg = currentLanguage === "km"
                     ? `គណនី ${unauthPhone || ""} ផុតកំណត់ការអនុញ្ញាត (Unauthorized)។ សូមចុចប៊ូតុង "🔑 Re-login" លើគណនីនោះដើម្បីភ្ជាប់ឡើងវិញ!`
                     : `Account ${unauthPhone || ""} is not authorized. Please click "🔑 Re-login" next to the account to reconnect.`;
-                alert(promptMsg);
+                showToast(promptMsg, "error", 6000);
             } else {
-                alert(errMsg);
+                showToast(errMsg, "error");
             }
         }
     } catch (err) {
         logConsole(`Scraping network error: ${err.message}`, "error");
-        alert("Scraping error: " + err.message);
+        showToast("Scraping error: " + err.message, "error");
     } finally {
         btn.disabled = false;
         btn.innerHTML = `<i class="fas fa-download"></i> <span id="btnFetchText">${I18N[currentLanguage].btnFetchText}</span>`;
@@ -1655,12 +1763,12 @@ async function startAddingMembers() {
     const maxPerAcc = parseInt(document.getElementById("maxAccSlider").value) || 30;
 
     if (!targetGroup) {
-        alert(currentLanguage === "km" ? "សូមបញ្ចូលតំណភ្ជាប់ក្រុមគោលដៅ!" : "Please enter the target group link or username!");
+        showToast(currentLanguage === "km" ? "សូមបញ្ចូលតំណភ្ជាប់ក្រុមគោលដៅ!" : "Please enter the target group link or username!", "warning");
         return;
     }
 
     if (members.length === 0) {
-        alert(currentLanguage === "km" ? "សូមបញ្ចូលសមាជិកក្នុងបញ្ជីជាមុនសិន!" : "Please add candidates to the member list first!");
+        showToast(currentLanguage === "km" ? "សូមបញ្ចូលសមាជិកក្នុងបញ្ជីជាមុនសិន!" : "Please add candidates to the member list first!", "warning");
         return;
     }
 
@@ -1673,7 +1781,7 @@ async function startAddingMembers() {
         const msg = currentLanguage === "km"
             ? "មិនមានគណនី Telegram សកម្ម ឬត្រូវបានអនុញ្ញាតទេ! សូមពិនិត្យមើលគណនី ឬចុច Re-login។"
             : "No active authorized Telegram accounts found! Please enable an account or re-login.";
-        alert(msg);
+        showToast(msg, "error");
         return;
     }
 
@@ -1800,7 +1908,7 @@ async function startAddingMembers() {
                         ? `⚠️ គណនី Telegram ទាំងអស់បានជាប់ Flood Wait របស់ Telegram (${waitLabel})។ ប្រព័ន្ធបានផ្អាកដោយស្វ័យប្រវត្តិដើម្បីការពារគណនីរបស់អ្នក!`
                         : `⚠️ All accounts hit Telegram Flood Wait (${waitLabel}). Adder stopped to protect your accounts!`;
                     logConsole(stopMsg, "error");
-                    alert(stopMsg);
+                    showToast(stopMsg, "error", 7000);
                     break;
                 } else {
                     // Smoothly retry THIS SAME CANDIDATE with the remaining healthy account (e.g. Acc 1)!
@@ -1834,7 +1942,7 @@ async function startAddingMembers() {
                 } else {
                     skippedCount++;
                     isJobRunning = false;
-                    alert("No remaining active accounts available.");
+                    showToast("No remaining active accounts available.", "error");
                     break;
                 }
             } else if (data.status === "connect_failed") {
@@ -2099,7 +2207,7 @@ function logConsole(msg, level = "info", timestamp = null) {
     }
 
     const logItem = document.createElement("div");
-    logItem.className = `flex items-start gap-1.5 ${colorClass}`;
+    logItem.className = `log-item flex items-start gap-1.5 ${colorClass}`;
     logItem.innerHTML = `
         <span class="text-gray-600 shrink-0 font-mono">[${time}]</span>
         <span class="shrink-0 font-bold ${badgeClass}">›</span>
@@ -2121,8 +2229,8 @@ function clearConsoleLogs() {
 // Summary Modal
 // ==========================================
 function openSummaryModal(added, skipped, breakdown = {}) {
-    document.getElementById("sumTotalAdded").innerText = added;
-    document.getElementById("sumTotalSkipped").innerText = skipped;
+    tweenNumber(document.getElementById("sumTotalAdded"), added);
+    tweenNumber(document.getElementById("sumTotalSkipped"), skipped);
 
     const listEl = document.getElementById("sumBreakdownList");
     const entries = Object.entries(breakdown);
@@ -2148,11 +2256,11 @@ function openSummaryModal(added, skipped, breakdown = {}) {
         }).join("");
     }
 
-    document.getElementById("summaryModal").classList.remove("hidden");
+    openModalEl(document.getElementById("summaryModal"));
 }
 
 function closeSummaryModal() {
-    document.getElementById("summaryModal").classList.add("hidden");
+    closeModalEl(document.getElementById("summaryModal"));
 }
 
 // ==========================================
