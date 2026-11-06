@@ -254,13 +254,36 @@ function getAccountsStorageKey() {
     return "tgadder_accounts_" + getMachineId();
 }
 
+function deduplicateAccounts(accounts) {
+    if (!Array.isArray(accounts)) return [];
+    const seenUids = new Set();
+    const seenPhones = new Set();
+    const result = [];
+    for (const acc of accounts) {
+        if (!acc || typeof acc !== "object") continue;
+        const uid = acc.user_id ? String(acc.user_id).trim() : "";
+        const phone = acc.phone_number ? String(acc.phone_number).trim() : "";
+        const normPhone = phone ? phone.replace(/[^\d+]/g, "") : "";
+
+        // If this exact Telegram account was already seen by user_id or phone, skip duplicate
+        if (uid && seenUids.has(uid)) continue;
+        if (normPhone && seenPhones.has(normPhone)) continue;
+
+        if (uid) seenUids.add(uid);
+        if (normPhone) seenPhones.add(normPhone);
+        result.push(acc);
+    }
+    return result;
+}
+
 function loadAccountsFromLocalStorage() {
     try {
         const raw = localStorage.getItem(getAccountsStorageKey());
         if (raw) {
             const parsed = JSON.parse(raw);
             if (Array.isArray(parsed) && parsed.length > 0) {
-                currentAccounts = parsed;
+                currentAccounts = deduplicateAccounts(parsed);
+                saveAccountsToLocalStorage(currentAccounts);
                 renderAccounts(currentAccounts);
                 updateAccountsSummary();
                 return true;
@@ -275,7 +298,8 @@ function loadAccountsFromLocalStorage() {
 function saveAccountsToLocalStorage(accounts) {
     try {
         if (Array.isArray(accounts)) {
-            localStorage.setItem(getAccountsStorageKey(), JSON.stringify(accounts));
+            const clean = deduplicateAccounts(accounts);
+            localStorage.setItem(getAccountsStorageKey(), JSON.stringify(clean));
         }
     } catch (e) {
         console.error("Error saving accounts to localStorage:", e);
@@ -568,14 +592,14 @@ async function loadAccounts() {
                         }
                     } catch (e) {}
                 }
-                currentAccounts = serverAccounts.map(acc => {
+                currentAccounts = deduplicateAccounts(serverAccounts.map(acc => {
                     const cached = cachedMap[acc.phone_number];
                     if (cached && cached.session_string && !acc.session_string) {
                         // Restore session_string from localStorage if server doesn't have it
                         return Object.assign({}, acc, { session_string: cached.session_string });
                     }
                     return acc;
-                });
+                }));
                 saveAccountsToLocalStorage(currentAccounts);
             } else {
                 // If server accounts are empty (e.g. server restart), check localStorage cache
@@ -584,12 +608,12 @@ async function loadAccounts() {
                     try {
                         const cached = JSON.parse(cachedRaw);
                         if (Array.isArray(cached) && cached.length > 0) {
-                            currentAccounts = cached;
+                            currentAccounts = deduplicateAccounts(cached);
                             // Sync back to server so server is also up-to-date
                             fetch(`${API_BASE}/api/accounts/sync-cache`, {
                                 method: "POST",
                                 headers: getAuthHeaders(),
-                                body: JSON.stringify({ accounts: cached })
+                                body: JSON.stringify({ accounts: currentAccounts })
                             }).catch(() => {});
                         } else {
                             currentAccounts = [];
@@ -602,6 +626,7 @@ async function loadAccounts() {
                     currentAccounts = [];
                 }
             }
+            currentAccounts = deduplicateAccounts(currentAccounts);
             renderAccounts(currentAccounts);
             updateAccountsSummary(data.max_accounts);
         }
@@ -1061,12 +1086,19 @@ function startPollingQrStatus(qrId) {
                 stopQrPolling();
                 currentQrId = null;
                 if (st.account) {
-                    const idx = currentAccounts.findIndex(a => a.phone_number === st.account.phone_number);
+                    const incomingUid = st.account.user_id ? String(st.account.user_id).trim() : "";
+                    const incomingPhone = st.account.phone_number ? String(st.account.phone_number).trim() : "";
+                    const idx = currentAccounts.findIndex(a => {
+                        const aUid = a.user_id ? String(a.user_id).trim() : "";
+                        const aPhone = a.phone_number ? String(a.phone_number).trim() : "";
+                        return (incomingUid && aUid && incomingUid === aUid) || (incomingPhone && aPhone && incomingPhone === aPhone);
+                    });
                     if (idx >= 0) {
                         currentAccounts[idx] = Object.assign({}, currentAccounts[idx], st.account);
                     } else {
                         currentAccounts.push(st.account);
                     }
+                    currentAccounts = deduplicateAccounts(currentAccounts);
                     saveAccountsToLocalStorage(currentAccounts);
                     renderAccounts(currentAccounts);
                     updateAccountsSummary();
@@ -1179,12 +1211,19 @@ async function submitQr2FaPassword() {
             currentQrId = null;
             if (data.data && data.data.account) {
                 const acc = data.data.account;
-                const idx = currentAccounts.findIndex(a => a.phone_number === acc.phone_number);
+                const incomingUid = acc.user_id ? String(acc.user_id).trim() : "";
+                const incomingPhone = acc.phone_number ? String(acc.phone_number).trim() : "";
+                const idx = currentAccounts.findIndex(a => {
+                    const aUid = a.user_id ? String(a.user_id).trim() : "";
+                    const aPhone = a.phone_number ? String(a.phone_number).trim() : "";
+                    return (incomingUid && aUid && incomingUid === aUid) || (incomingPhone && aPhone && incomingPhone === aPhone);
+                });
                 if (idx >= 0) {
                     currentAccounts[idx] = Object.assign({}, currentAccounts[idx], acc);
                 } else {
                     currentAccounts.push(acc);
                 }
+                currentAccounts = deduplicateAccounts(currentAccounts);
                 saveAccountsToLocalStorage(currentAccounts);
                 renderAccounts(currentAccounts);
                 updateAccountsSummary();
@@ -1420,12 +1459,19 @@ async function verifyTelegramCode() {
                 currentLoginPhoneCodeHash = "";
                 if (data.data && data.data.account) {
                     const acc = data.data.account;
-                    const idx = currentAccounts.findIndex(a => a.phone_number === acc.phone_number);
+                    const incomingUid = acc.user_id ? String(acc.user_id).trim() : "";
+                    const incomingPhone = acc.phone_number ? String(acc.phone_number).trim() : "";
+                    const idx = currentAccounts.findIndex(a => {
+                        const aUid = a.user_id ? String(a.user_id).trim() : "";
+                        const aPhone = a.phone_number ? String(a.phone_number).trim() : "";
+                        return (incomingUid && aUid && incomingUid === aUid) || (incomingPhone && aPhone && incomingPhone === aPhone);
+                    });
                     if (idx >= 0) {
                         currentAccounts[idx] = Object.assign({}, currentAccounts[idx], acc);
                     } else {
                         currentAccounts.push(acc);
                     }
+                    currentAccounts = deduplicateAccounts(currentAccounts);
                     saveAccountsToLocalStorage(currentAccounts);
                     renderAccounts(currentAccounts);
                     updateAccountsSummary();
@@ -1627,7 +1673,11 @@ async function startAddingMembers() {
         return;
     }
 
-    const activeAccounts = currentAccounts.filter(a => a.enabled && !a.spam_flagged && !a.needs_reauth);
+    const activeAccounts = currentAccounts.filter(a => {
+        const isSpam = a.spam_flagged === true || a.spam_flagged === "true";
+        const isReauth = a.needs_reauth === true || a.needs_reauth === "true";
+        return a.enabled && !isSpam && !isReauth;
+    });
     if (activeAccounts.length === 0) {
         const msg = currentLanguage === "km"
             ? "មិនមានគណនី Telegram សកម្ម ឬត្រូវបានអនុញ្ញាតទេ! សូមពិនិត្យមើលគណនី ឬចុច Re-login។"
@@ -1679,8 +1729,10 @@ async function startAddingMembers() {
         // Premium accounts: unlimited invites!
         // Standard accounts: invites_done < maxPerAcc
         const availableWorkers = activeAccounts.filter(a => {
+            const isSpam = a.spam_flagged === true || a.spam_flagged === "true";
+            const isReauth = a.needs_reauth === true || a.needs_reauth === "true";
             const b = breakdown[a.phone_number];
-            return !a.spam_flagged && !a.needs_reauth && b && b.status === "ready" && (a.is_premium || b.invites_done < maxPerAcc);
+            return a.enabled && !isSpam && !isReauth && b && b.status === "ready" && (a.is_premium || b.invites_done < maxPerAcc);
         });
 
         if (availableWorkers.length === 0) {
@@ -1727,54 +1779,122 @@ async function startAddingMembers() {
                 breakdown[phone].invites_done++;
                 logConsole(data.message, "success");
             } else if (data.status === "peer_flood" || data.status === "flood_wait") {
-                skippedCount++;
-                // Set status "flood_wait" so next availableWorkers filter excludes this account
+                // Account hit Telegram spam/flood limit!
                 breakdown[phone].status = "flood_wait";
                 worker.spam_flagged = true;
+                // Mark spam_flagged on all matching accounts in currentAccounts and localStorage
+                currentAccounts.forEach(a => {
+                    if (a.phone_number === phone || (worker.user_id && a.user_id === worker.user_id)) {
+                        a.spam_flagged = true;
+                    }
+                });
                 const secs = data.seconds || 0;
                 const waitLabel = secs > 60 ? `${Math.ceil(secs / 60)}m (${secs}s)` : `${secs}s`;
                 logConsole(`⚠️ Account ${phone} hit Telegram Flood Wait (${waitLabel}). Account paused automatically.`, "warning");
                 saveAccountsToLocalStorage(currentAccounts);
                 renderAccounts(currentAccounts);
 
-                // Check if any available workers remain
+                // Check if any healthy workers remain (e.g. Acc 1)
                 const remainingWorkers = activeAccounts.filter(a => {
+                    const isSpam = a.spam_flagged === true || a.spam_flagged === "true";
+                    const isReauth = a.needs_reauth === true || a.needs_reauth === "true";
                     const b = breakdown[a.phone_number];
-                    return !a.spam_flagged && !a.needs_reauth && b && b.status === "ready" && (a.is_premium || b.invites_done < maxPerAcc);
+                    return a.enabled && !isSpam && !isReauth && b && b.status === "ready" && (a.is_premium || b.invites_done < maxPerAcc);
                 });
+
                 if (remainingWorkers.length === 0) {
+                    skippedCount++;
                     isJobRunning = false;
                     const stopMsg = currentLanguage === "km"
-                        ? `⚠️ គណានី Telegram តាមែអស់បានជាប់ Flood Wait របស់ Telegram (${waitLabel})។ ប្រព័ន្ធបានផ័យកតតឹយស្វ័យប្រវតឹតីតារការបអូតគណាន!`
+                        ? `⚠️ គណនី Telegram ទាំងអស់បានជាប់ Flood Wait របស់ Telegram (${waitLabel})។ ប្រព័ន្ធបានផ្អាកដោយស្វ័យប្រវត្តិដើម្បីការពារគណនីរបស់អ្នក!`
                         : `⚠️ All accounts hit Telegram Flood Wait (${waitLabel}). Adder stopped to protect your accounts!`;
                     logConsole(stopMsg, "error");
                     alert(stopMsg);
                     break;
+                } else {
+                    // Smoothly retry THIS SAME CANDIDATE with the remaining healthy account (e.g. Acc 1)!
+                    const nextPhone = remainingWorkers[0].phone_number;
+                    logConsole(`🔄 Switching candidate ${candidate} to healthy account ${nextPhone}...`, "info");
+                    idx--; // Repeat candidate with healthy worker in next iteration
+                    continue;
                 }
-                // Else continue to next member - remaining workers will be used automatically
             } else if (data.status === "unauthorized" || data.status === "auth_key_duplicated") {
-                skippedCount++;
                 breakdown[phone].status = "unauthorized";
                 worker.needs_reauth = true;
+                currentAccounts.forEach(a => {
+                    if (a.phone_number === phone || (worker.user_id && a.user_id === worker.user_id)) {
+                        a.needs_reauth = true;
+                    }
+                });
                 saveAccountsToLocalStorage(currentAccounts);
                 renderAccounts(currentAccounts);
-                logConsole(`⚠️ Account ${phone} session expired/revoked by Telegram. Switching to next account...`, "warning");
-                // Don't break - continue adding with other available accounts
+                logConsole(`⚠️ Account ${phone} session expired/revoked by Telegram.`, "warning");
+
+                const remainingWorkers = activeAccounts.filter(a => {
+                    const isSpam = a.spam_flagged === true || a.spam_flagged === "true";
+                    const isReauth = a.needs_reauth === true || a.needs_reauth === "true";
+                    const b = breakdown[a.phone_number];
+                    return a.enabled && !isSpam && !isReauth && b && b.status === "ready" && (a.is_premium || b.invites_done < maxPerAcc);
+                });
+                if (remainingWorkers.length > 0) {
+                    logConsole(`🔄 Switching candidate ${candidate} to healthy account ${remainingWorkers[0].phone_number}...`, "info");
+                    idx--;
+                    continue;
+                } else {
+                    skippedCount++;
+                    isJobRunning = false;
+                    alert("No remaining active accounts available.");
+                    break;
+                }
             } else if (data.status === "connect_failed") {
-                skippedCount++;
                 breakdown[phone].status = "connect_failed";
                 worker.needs_reauth = true;
+                currentAccounts.forEach(a => {
+                    if (a.phone_number === phone || (worker.user_id && a.user_id === worker.user_id)) {
+                        a.needs_reauth = true;
+                    }
+                });
                 saveAccountsToLocalStorage(currentAccounts);
                 renderAccounts(currentAccounts);
-                logConsole(`⚠️ Could not connect ${phone}: ${data.message || "Session issue"}. Switching account...`, "warning");
-                // Don't break - continue adding with other available accounts
+                logConsole(`⚠️ Could not connect ${phone}: ${data.message || "Session issue"}.`, "warning");
+
+                const remainingWorkers = activeAccounts.filter(a => {
+                    const isSpam = a.spam_flagged === true || a.spam_flagged === "true";
+                    const isReauth = a.needs_reauth === true || a.needs_reauth === "true";
+                    const b = breakdown[a.phone_number];
+                    return a.enabled && !isSpam && !isReauth && b && b.status === "ready" && (a.is_premium || b.invites_done < maxPerAcc);
+                });
+                if (remainingWorkers.length > 0) {
+                    logConsole(`🔄 Switching candidate ${candidate} to healthy account ${remainingWorkers[0].phone_number}...`, "info");
+                    idx--;
+                    continue;
+                } else {
+                    skippedCount++;
+                    isJobRunning = false;
+                    break;
+                }
             } else if (data.status === "privacy_restricted") {
                 skippedCount++;
                 logConsole(data.message || `⚠️ Skipped ${candidate} (User privacy settings block stranger invites)`, "warning");
             } else if (data.status === "no_admin") {
-                skippedCount++;
                 breakdown[phone].status = "no_admin";
                 logConsole(`⚠️ Account ${phone} requires admin permissions in target group.`, "error");
+
+                const remainingWorkers = activeAccounts.filter(a => {
+                    const isSpam = a.spam_flagged === true || a.spam_flagged === "true";
+                    const isReauth = a.needs_reauth === true || a.needs_reauth === "true";
+                    const b = breakdown[a.phone_number];
+                    return a.enabled && !isSpam && !isReauth && b && b.status === "ready" && (a.is_premium || b.invites_done < maxPerAcc);
+                });
+                if (remainingWorkers.length > 0) {
+                    logConsole(`🔄 Switching candidate ${candidate} to healthy account ${remainingWorkers[0].phone_number}...`, "info");
+                    idx--;
+                    continue;
+                } else {
+                    skippedCount++;
+                    isJobRunning = false;
+                    break;
+                }
             } else if (data.status === "already_participant") {
                 skippedCount++;
                 logConsole(data.message || `${candidate} is already a member.`, "info");

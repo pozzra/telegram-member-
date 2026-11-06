@@ -297,48 +297,114 @@ def get_client_session(acc: Dict[str, Any], phone: str, machine_id: Optional[str
 def load_accounts(machine_id: Optional[str] = None) -> List[Dict[str, Any]]:
     acc_file = get_accounts_file(machine_id)
     if not acc_file.exists():
-        return []
+        if machine_id and ACCOUNTS_FILE.exists():
+            acc_file = ACCOUNTS_FILE
+        else:
+            return []
     try:
         with open(acc_file, "r", encoding="utf-8") as f:
-            return json.load(f)
+            raw_accs = json.load(f)
+            if not isinstance(raw_accs, list):
+                return []
+            # Deduplicate by user_id and phone_number to prevent phantom duplicate accounts
+            deduped = []
+            seen_uids = set()
+            seen_phones = set()
+            for acc in raw_accs:
+                if not isinstance(acc, dict):
+                    continue
+                uid = str(acc.get("user_id") or "")
+                phone = normalize_phone(acc.get("phone_number", ""))
+                if uid and uid in seen_uids:
+                    continue
+                if phone and phone in seen_phones:
+                    continue
+                if uid:
+                    seen_uids.add(uid)
+                if phone:
+                    seen_phones.add(phone)
+                deduped.append(acc)
+            return deduped
     except Exception:
         return []
 
 
 def save_accounts(accounts: List[Dict[str, Any]], machine_id: Optional[str] = None):
     acc_file = get_accounts_file(machine_id)
+    # Deduplicate accounts before saving
+    deduped = []
+    seen_uids = set()
+    seen_phones = set()
+    for acc in accounts:
+        if not isinstance(acc, dict):
+            continue
+        uid = str(acc.get("user_id") or "")
+        phone = normalize_phone(acc.get("phone_number", ""))
+        if uid and uid in seen_uids:
+            continue
+        if phone and phone in seen_phones:
+            continue
+        if uid:
+            seen_uids.add(uid)
+        if phone:
+            seen_phones.add(phone)
+        deduped.append(acc)
+
     with open(acc_file, "w", encoding="utf-8") as f:
-        json.dump(accounts, f, indent=2, ensure_ascii=False)
+        json.dump(deduped, f, indent=2, ensure_ascii=False)
 
 
 def add_or_update_account(acc_data: Dict[str, Any], machine_id: Optional[str] = None):
     accounts = load_accounts(machine_id)
     norm = normalize_phone(acc_data.get("phone_number", ""))
+    uid = str(acc_data.get("user_id") or "")
     updated = False
+
     for i, a in enumerate(accounts):
-        if normalize_phone(a.get("phone_number", "")) == norm:
+        a_norm = normalize_phone(a.get("phone_number", ""))
+        a_uid = str(a.get("user_id") or "")
+
+        # Match by Telegram user_id (exact unique identity) OR normalized phone number
+        same_user = bool(uid and a_uid and uid == a_uid)
+        same_phone = bool(norm and a_norm and norm == a_norm)
+
+        if same_user or same_phone:
             merged = dict(a)
             for k, v in acc_data.items():
                 # Never clobber existing valid session_string with an empty value
                 if k == "session_string" and not v and a.get("session_string"):
                     continue
+                # Never overwrite real phone number with fallback user ID
+                if k == "phone_number" and v and uid and v.endswith(uid) and a.get("phone_number") and not a.get("phone_number", "").endswith(uid):
+                    continue
                 merged[k] = v
             accounts[i] = merged
             updated = True
             break
+
     if not updated:
         accounts.append(acc_data)
+
     save_accounts(accounts, machine_id)
     return accounts
 
 
 def delete_account(phone: str, machine_id: Optional[str] = None) -> bool:
     norm = normalize_phone(phone)
+    raw_p = (phone or "").strip()
     accounts = load_accounts(machine_id)
-    filtered = [a for a in accounts if normalize_phone(a.get("phone_number", "")) != norm]
+    filtered = []
+    for a in accounts:
+        a_norm = normalize_phone(a.get("phone_number", ""))
+        a_raw = (a.get("phone_number") or "").strip()
+        a_uid = str(a.get("user_id") or "")
+        match_phone = bool((norm and a_norm and norm == a_norm) or (raw_p and a_raw and raw_p == a_raw))
+        match_uid = bool(raw_p and a_uid and raw_p.lstrip("+") == a_uid)
+        if not (match_phone or match_uid):
+            filtered.append(a)
     save_accounts(filtered, machine_id)
     # Remove session files
-    sess_file = Path(get_session_path(norm, machine_id) + ".session")
+    sess_file = Path(get_session_path(norm or raw_p, machine_id) + ".session")
     if sess_file.exists():
         try:
             sess_file.unlink()
@@ -349,9 +415,15 @@ def delete_account(phone: str, machine_id: Optional[str] = None) -> bool:
 
 def toggle_account_status(phone: str, enabled: bool, machine_id: Optional[str] = None) -> bool:
     norm = normalize_phone(phone)
+    raw_p = (phone or "").strip()
     accounts = load_accounts(machine_id)
     for a in accounts:
-        if normalize_phone(a.get("phone_number", "")) == norm:
+        a_norm = normalize_phone(a.get("phone_number", ""))
+        a_raw = (a.get("phone_number") or "").strip()
+        a_uid = str(a.get("user_id") or "")
+        match_phone = bool((norm and a_norm and norm == a_norm) or (raw_p and a_raw and raw_p == a_raw))
+        match_uid = bool(raw_p and a_uid and raw_p.lstrip("+") == a_uid)
+        if match_phone or match_uid:
             a["enabled"] = enabled
             break
     save_accounts(accounts, machine_id)
@@ -770,7 +842,21 @@ async def _watch_qr_login(qr_id: str):
             break
         try:
             user = await qr.wait(timeout=25)
-            phone = normalize_phone(user.phone) if getattr(user, "phone", None) else f"+{user.id}"
+            try:
+                me = await client.get_me()
+                if me:
+                    user = me
+            except Exception:
+                pass
+            raw_phone = getattr(user, "phone", None)
+            phone = normalize_phone(raw_phone) if raw_phone else ""
+            if not phone:
+                for acc in load_accounts(entry.get("machine_id")):
+                    if str(acc.get("user_id")) == str(getattr(user, "id", "")):
+                        phone = acc.get("phone_number", "")
+                        break
+            if not phone:
+                phone = f"+{user.id}"
 
             sess_str = ""
             try:
@@ -913,7 +999,15 @@ async def submit_qr_2fa(qr_id: str, password: str, machine_id: Optional[str] = N
         if not me:
             return False, "Telegram did not return the account profile. Please refresh the QR code and try again.", None
 
-        phone = normalize_phone(me.phone) if getattr(me, "phone", None) else f"+{me.id}"
+        raw_phone = getattr(me, "phone", None)
+        phone = normalize_phone(raw_phone) if raw_phone else ""
+        if not phone:
+            for acc in load_accounts(entry.get("machine_id")):
+                if str(acc.get("user_id")) == str(getattr(me, "id", "")):
+                    phone = acc.get("phone_number", "")
+                    break
+        if not phone:
+            phone = f"+{me.id}"
         sess_str = ""
         try:
             sess_str = StringSession.save(client.session)
