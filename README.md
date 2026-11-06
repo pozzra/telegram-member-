@@ -181,7 +181,7 @@ Set these in the Vercel Dashboard (**Settings → Environment Variables**):
 | `TELEGRAM_API_HASH` | `0123456789abcdef...` | Your own API hash from [my.telegram.org/apps](https://my.telegram.org/apps) |
 | `DEFAULT_COUNTRY_CODE` | `855` | Default country code for local phone numbers |
 | `BOT_TOKEN` | `1234567890:ABC...` | Only needed if running `bot.py` separately |
-| `ADMIN_CHAT_ID` | `1208908312` | Telegram admin chat ID for the license bot |
+| `ADMIN_CHAT_ID` | `12345678` | Telegram admin chat ID for the license bot |
 
 ### Limitations on Vercel Serverless
 
