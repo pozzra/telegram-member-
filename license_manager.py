@@ -29,6 +29,16 @@ ADMIN_MASTER_KEY = os.environ.get("ADMIN_MASTER_KEY", "kun_amra_admin_2026")
 REVOKED_SYNC_TTL = float(os.environ.get("REVOKED_SYNC_TTL", "30"))
 REVOKED_SYNC_TIMEOUT = float(os.environ.get("REVOKED_SYNC_TIMEOUT", "3"))
 
+# Keys that were previously issued and then revoked in the Telegram bot.
+# On startup (Vercel /tmp and Render) these are pre-added to the local
+# blacklist so the hosted site rejects them immediately, even if the central
+# server is unreachable. Comma-separated.
+AUTO_REVOKE_SEED_KEYS = [
+    k.strip().upper()
+    for k in os.environ.get("AUTO_REVOKE_SEED_KEYS", "").split(",")
+    if k.strip()
+]
+
 _revoked_sync_lock = threading.Lock()
 _revoked_sync_cache = {"ts": 0.0, "keys": None, "failed": False}
 _revoked_sync_inflight = False
@@ -73,7 +83,26 @@ def init_db():
                 config_value TEXT NOT NULL
             )
         """)
-    
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS revoked_keys (
+                key_code TEXT PRIMARY KEY,
+                revoked_at TEXT NOT NULL
+            )
+        """)
+
+    # The revoked list must survive ephemeral filesystems (Vercel /tmp).
+    # Restore anything from revoked_keys.json into the DB, then seed the
+    # keys that were revoked in the bot before syncing existed.
+    _migrate_revoked_file_to_db(conn)
+    for seed in AUTO_REVOKE_SEED_KEYS:
+        conn.execute(
+            "INSERT OR IGNORE INTO revoked_keys (key_code, revoked_at) VALUES (?, ?)",
+            (seed, get_now_utc().isoformat()),
+        )
+        # Also make sure any locally-stored copy of the key is marked inactive.
+        conn.execute("UPDATE licenses SET is_active = 0 WHERE key_code = ?", (seed,))
+    conn.commit()
+
     cursor = conn.cursor()
     cursor.execute("SELECT COUNT(*) FROM licenses")
     count = cursor.fetchone()[0]
@@ -209,6 +238,42 @@ def create_license(days=None, tier="VIP", max_accounts=50, note="", custom_key=N
 
 REVOKED_KEYS_FILE = DATA_DIR / "revoked_keys.json"
 
+def _migrate_revoked_file_to_db(conn):
+    """One-way import of the legacy JSON blacklist into the SQLite table."""
+    legacy = set()
+    try:
+        if REVOKED_KEYS_FILE.exists():
+            with open(REVOKED_KEYS_FILE, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                if isinstance(data, list):
+                    legacy = {str(k).upper().strip() for k in data if k}
+    except Exception:
+        legacy = set()
+
+    try:
+        cursor = conn.cursor()
+        cursor.execute("SELECT key_code FROM revoked_keys")
+        existing = {r[0].upper() for r in cursor.fetchall()}
+    except Exception:
+        existing = set()
+
+    missing = legacy - existing
+    if missing:
+        now = get_now_utc().isoformat()
+        conn.executemany(
+            "INSERT OR IGNORE INTO revoked_keys (key_code, revoked_at) VALUES (?, ?)",
+            [(k, now) for k in sorted(missing)],
+        )
+    return missing
+
+def _db_revoked_keys(conn) -> set:
+    try:
+        cursor = conn.cursor()
+        cursor.execute("SELECT key_code FROM revoked_keys")
+        return {r[0].upper().strip() for r in cursor.fetchall()}
+    except Exception:
+        return set()
+
 def _read_revoked_file() -> set:
     try:
         if REVOKED_KEYS_FILE.exists():
@@ -310,14 +375,27 @@ def sync_revoked_from_central(force: bool = False) -> set:
     return local
 
 def get_revoked_keys() -> set:
-    """Local revoked set, merged with the central list when possible."""
-    local = _read_revoked_file()
+    """Revoked set from the SQLite table, merged with the central list when possible."""
+    local = _read_revoked_db_keys()
     if _is_local_api_base():
         return local
     try:
         return sync_revoked_from_central() | local
     except Exception:
         return local
+
+def _read_revoked_db_keys() -> set:
+    """Read the revoked list from SQLite (persistent) plus the legacy file."""
+    local = _read_revoked_file()
+    try:
+        conn = get_connection()
+        try:
+            local |= _db_revoked_keys(conn)
+        finally:
+            conn.close()
+    except Exception:
+        pass
+    return local
 
 def _invalidate_sync_cache():
     _revoked_sync_cache["ts"] = 0.0
@@ -330,6 +408,16 @@ def save_revoked_key(key_code: str):
     revoked = _read_revoked_file()
     revoked.add(clean)
     _write_revoked_file(revoked)
+    try:
+        conn = get_connection()
+        with conn:
+            conn.execute(
+                "INSERT OR REPLACE INTO revoked_keys (key_code, revoked_at) VALUES (?, ?)",
+                (clean, get_now_utc().isoformat()),
+            )
+        conn.close()
+    except Exception:
+        pass
     _invalidate_sync_cache()
     # Push to the central server so every hosted instance sees it.
     push_revocation_to_central(clean)
@@ -341,6 +429,13 @@ def unrevoke_key(key_code: str):
     revoked = _read_revoked_file()
     revoked.discard(clean)
     _write_revoked_file(revoked)
+    try:
+        conn = get_connection()
+        with conn:
+            conn.execute("DELETE FROM revoked_keys WHERE key_code = ?", (clean,))
+        conn.close()
+    except Exception:
+        pass
     _invalidate_sync_cache()
     # Push the re-activation to the central server as well.
     push_revocation_to_central(clean, revoke=False)
@@ -392,6 +487,51 @@ def push_local_revocations_to_central():
         pass
     return len(keys)
 
+def _authoritative_server_base() -> str:
+    """
+    The live site whose license verdict is authoritative.
+
+    Vercel is the primary hosted deployment (always up, always serves the
+    dashboard), so it is checked first. Render is the fallback when configured.
+    """
+    candidates = []
+    vercel_url = os.environ.get("VERCEL_LICENSE_URL", "").strip().rstrip("/")
+    if vercel_url:
+        candidates.append(vercel_url)
+    if LICENSE_API_BASE and not _is_local_api_base():
+        candidates.append(LICENSE_API_BASE.rstrip("/"))
+    return candidates[0] if candidates else ""
+
+def check_key_on_authoritative_server(key_code: str, machine_id: str = None) -> bool:
+    """
+    Ask the live hosted site whether this key is still active.
+
+    The bot's local DB is NOT authoritative: the hosted site may have already
+    auto-seeded the key, so a locally-revoked key can still verify there. This
+    consults the live site's own verdict so revocations stick even when the
+    central push failed. Runs concurrently and never blocks on a slow server.
+    """
+    base = _authoritative_server_base()
+    if not base or not key_code:
+        return True
+
+    result = {"active": True}
+
+    def _probe():
+        try:
+            import httpx
+            headers = {"X-License-Key": key_code, "X-Machine-Id": machine_id or ""}
+            resp = httpx.get(f"{base}/api/license/status", headers=headers, timeout=REVOKED_SYNC_TIMEOUT)
+            if resp.status_code == 200 and isinstance(resp.json(), dict):
+                result["active"] = bool(resp.json().get("is_active"))
+        except Exception:
+            pass
+
+    worker = threading.Thread(target=_probe, daemon=True)
+    worker.start()
+    worker.join(timeout=max(REVOKED_SYNC_TIMEOUT + 1, 4))
+    return result["active"]
+
 def verify_license(key_code: str, machine_id: str = None, bind_if_unbound: bool = False):
     if not key_code:
         return False, "License key is missing or empty.", None
@@ -403,11 +543,11 @@ def verify_license(key_code: str, machine_id: str = None, bind_if_unbound: bool 
 
     # Check revoked blacklist FIRST (prevents revoked signed keys from auto-reactivating!).
     # Merge the central (Render) list so a key revoked in the Telegram bot is
-    # honoured here too. Cached by TTL; falls back to the local file offline.
+    # honoured here too. Cached by TTL; falls back to the local DB offline.
     try:
-        revoked_set = sync_revoked_from_central() | _read_revoked_file()
+        revoked_set = sync_revoked_from_central() | _read_revoked_db_keys()
     except Exception:
-        revoked_set = _read_revoked_file()
+        revoked_set = _read_revoked_db_keys()
     if clean_key in revoked_set:
         conn.close()
         return False, "This license key has been deactivated or revoked by Admin @kun_amra.", None
@@ -433,6 +573,12 @@ def verify_license(key_code: str, machine_id: str = None, bind_if_unbound: bool 
                        VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
                     (clean_key, tier, max_accounts, 1, now_str, expires_str, clean_machine, "Auto-verified signed key")
                 )
+            # Authoritative check: the hosted site may have revoked this key
+            # even though it verifies mathematically here.
+            if not check_key_on_authoritative_server(clean_key, clean_machine):
+                conn.execute("UPDATE licenses SET is_active = 0 WHERE key_code = ?", (clean_key,))
+                conn.close()
+                return False, "This license key has been deactivated or revoked by Admin @kun_amra.", None
             conn.close()
             return True, "License key is valid and active.", {
                 "key_code": clean_key,
@@ -485,6 +631,14 @@ def verify_license(key_code: str, machine_id: str = None, bind_if_unbound: bool 
         bound_device = client_machine
 
     conn.close()
+
+    # Authoritative check: a key revoked in the Telegram bot must not keep
+    # working here just because this instance auto-seeded it into its own DB.
+    if not check_key_on_authoritative_server(clean_key, clean_machine):
+        with conn:
+            conn.execute("UPDATE licenses SET is_active = 0 WHERE key_code = ?", (clean_key,))
+        conn.close()
+        return False, "This license key has been deactivated or revoked by Admin @kun_amra.", None
 
     details = {
         "key_code": row["key_code"],

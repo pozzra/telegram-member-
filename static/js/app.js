@@ -561,6 +561,17 @@ async function checkLicenseStatus() {
             text.innerText = (data && data.message) ? data.message : "Invalid / Expired License";
             banner.classList.remove("hidden");
             currentLicense = null;
+            // A revoked key must stop working immediately on this machine too.
+            const msg = (data && data.message) || "";
+            if (msg.toLowerCase().includes("revoke") || msg.toLowerCase().includes("deactivated")) {
+                setLicenseKey("");
+                localStorage.removeItem("tgadder_license_key");
+                saveAccountsToLocalStorage([]);
+                currentAccounts = [];
+                renderAccounts([]);
+                updateAccountsSummary();
+                showToast("This license key was revoked by the admin. Access has been disabled.", "error", 8000);
+            }
         }
     } catch (e) {
         console.error("License check error:", e);

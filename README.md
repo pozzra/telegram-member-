@@ -183,6 +183,8 @@ Set these in the Vercel Dashboard (**Settings → Environment Variables**):
 | `BOT_TOKEN` | `1234567890:ABC...` | Only needed if running `bot.py` separately |
 | `ADMIN_CHAT_ID` | `12345678` | Telegram admin chat ID for the license bot |
 | `LICENSE_API_BASE` | `https://telegram-adder-web.onrender.com` | Central license server used to sync revocations. Leave empty on the Render backend itself. |
+| `VERCEL_LICENSE_URL` | `https://telegram-member.vercel.app` | Live site whose license verdict is authoritative. Other instances ask it whether a key is still active. |
+| `AUTO_REVOKE_SEED_KEYS` | `TGADD-HEZ1-S41K-ZQJL,...` | Keys already revoked in the bot; pre-blacklisted on startup so the hosted site rejects them even if the central server is down. |
 
 ### Revocation Sync (Bot ↔ Hosted Site)
 
@@ -201,6 +203,15 @@ hosted site. To prevent this, revocations are synced through the Render backend:
 
 > Render must be running for cross-instance revocation to propagate. If it is
 > down, the bot keeps revoking locally and catches up automatically on restart.
+>
+> **Fallback when Render is down:** every instance also treats the live site
+> (`VERCEL_LICENSE_URL`) as authoritative — it asks that site's
+> `/api/license/status` whether a key is still active, so a revoked key is
+> rejected even if the central push never arrived. Revocations are additionally
+> persisted in SQLite (`revoked_keys` table), which survives Vercel `/tmp`
+> resets, and `AUTO_REVOKE_SEED_KEYS` pre-blacklists known-revoked keys at
+> startup. A periodic background sync re-pulls the central list every
+> `REVOKED_SYNC_TTL` seconds.
 
 ### Limitations on Vercel Serverless
 

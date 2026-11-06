@@ -222,6 +222,28 @@ async def license_status(
         return {"is_active": False, "message": "No license key provided."}
     clean_key = str(key).replace(" ", "").strip().upper()
     clean_mid = str(mid).replace(" ", "").strip().upper() if mid else None
+
+    # Global revoked list (DB + central) takes precedence over any local state,
+    # so a key revoked on any host is dead everywhere — including here.
+    try:
+        revoked_set = license_manager.get_revoked_keys()
+    except Exception:
+        revoked_set = set()
+
+    if clean_key in revoked_set:
+        try:
+            conn = license_manager.get_connection()
+            with conn:
+                conn.execute("UPDATE licenses SET is_active = 0 WHERE key_code = ?", (clean_key,))
+            conn.close()
+        except Exception:
+            pass
+        return {
+            "is_active": False,
+            "message": "This license key has been deactivated or revoked by Admin @kun_amra.",
+            "license": None,
+        }
+
     valid, message, details = license_manager.verify_license(clean_key, machine_id=clean_mid)
     return {"is_active": valid, "message": message, "license": details}
 
@@ -308,7 +330,29 @@ async def admin_revoked_keys(x_admin_key: Optional[str] = Header(None, alias="X-
     supplied = (x_admin_key or "").strip()
     if supplied != license_manager.ADMIN_MASTER_KEY:
         raise HTTPException(status_code=401, detail="Unauthorized")
-    revoked = sorted(license_manager._read_revoked_file())
+    revoked = sorted(license_manager.get_revoked_keys())
+    return {"success": True, "revoked": revoked, "count": len(revoked)}
+
+
+@app.post("/api/license/revoke")
+async def revoke_key_public(request: Request):
+    """
+    Revoke the caller's own key. Any instance (including ephemeral Vercel)
+    accepts this and persists the revocation to its SQLite table, so a key
+    revoked from any host is rejected on every other host.
+    """
+    body = await request.json()
+    key_code = str(body.get("key_code", "")).strip().upper()
+    if not key_code:
+        raise HTTPException(status_code=400, detail="key_code is required.")
+    license_manager.revoke_license(key_code)
+    return {"success": True, "message": f"Key {key_code} revoked."}
+
+
+@app.get("/api/license/revoked")
+async def revoked_keys_public():
+    """Public revoked-key list (read-only) so hosts can sync without an admin key."""
+    revoked = sorted(license_manager.get_revoked_keys())
     return {"success": True, "revoked": revoked, "count": len(revoked)}
 
 
@@ -607,6 +651,14 @@ async def render_keep_alive_task():
 
 @app.on_event("startup")
 async def on_app_startup():
+    # Keys that were revoked in the Telegram bot are pre-blacklisted here so
+    # this host rejects them immediately — even with a fresh /tmp (Vercel).
+    for seed in license_manager.AUTO_REVOKE_SEED_KEYS:
+        try:
+            license_manager.save_revoked_key(seed)
+        except Exception:
+            pass
+
     # Warm the revoked-key list from the central server so the first
     # verification after a cold start already honours bot revocations.
     try:
@@ -614,6 +666,21 @@ async def on_app_startup():
     except Exception:
         pass
     asyncio.create_task(render_keep_alive_task())
+    asyncio.create_task(revoked_sync_loop())
+
+
+async def revoked_sync_loop():
+    """
+    Periodically merge the central revoked list so a key revoked in the bot
+    stops working here within one interval, without waiting for a manual check.
+    """
+    interval = max(license_manager.REVOKED_SYNC_TTL, 30)
+    while True:
+        await asyncio.sleep(interval)
+        try:
+            license_manager.sync_revoked_from_central(force=True)
+        except Exception:
+            pass
 
 
 # ==========================================

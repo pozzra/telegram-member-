@@ -28,4 +28,9 @@ services:
       # Leave empty so the backend never calls itself over HTTP.
       - key: LICENSE_API_BASE
         value: ""
+      # Live site whose license status is treated as authoritative. Set to the
+      # Vercel URL so Render rejects keys revoked in the bot even if the push
+      # could not be delivered.
+      - key: VERCEL_LICENSE_URL
+        value: "https://telegram-member.vercel.app"
 
